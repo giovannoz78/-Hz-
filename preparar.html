@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>[Hz] · preparar</title>
+<script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+<style>
+  :root{ --bg:#0c0d0e; --tx:#e9e7e2; --mu:#8b8a86; --ln:#26282a; --ac:#7fd6e4; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--tx); font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Helvetica Neue",sans-serif; }
+  main{ max-width:980px; margin:0 auto; padding:40px 20px 80px; }
+  h1{ font-weight:400; font-size:22px; letter-spacing:.08em; margin:0 0 4px; }
+  h2{ font-weight:400; font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:var(--mu); margin:44px 0 12px; }
+  p{ color:var(--mu); margin:6px 0; max-width:680px; }
+  section{ border-top:1px solid var(--ln); }
+  label.btn,button{ display:inline-block; background:none; color:var(--tx); border:1px solid #3a3d40; border-radius:999px; padding:8px 18px; font:inherit; font-size:14px; cursor:pointer; margin:8px 8px 0 0; }
+  label.btn:hover,button:hover{ border-color:var(--ac); color:var(--ac); }
+  button:disabled{ opacity:.35; pointer-events:none; }
+  button.main{ border-color:var(--ac); color:var(--ac); }
+  input[type=file]{ display:none; }
+  .row{ display:flex; flex-wrap:wrap; gap:14px; margin-top:16px; }
+  .card{ width:220px; border:1px solid var(--ln); border-radius:10px; padding:10px; font-size:13px; }
+  .card .pair{ display:flex; gap:6px; }
+  .card img,.card canvas{ width:100%; aspect-ratio:1; object-fit:contain; background:#000; border-radius:6px; display:block; }
+  .card .pair > *{ width:50%; }
+  .card .n{ font-size:12px; color:var(--ac); letter-spacing:.1em; }
+  .card .nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--mu); margin:6px 0 4px; }
+  .card .ctl button{ padding:2px 10px; margin:0 4px 0 0; font-size:13px; }
+  .opts{ display:flex; flex-wrap:wrap; gap:24px; align-items:center; margin-top:14px; color:var(--mu); font-size:14px; }
+  .opts input[type=range]{ vertical-align:middle; accent-color:var(--ac); }
+  select{ background:var(--bg); color:var(--tx); border:1px solid #3a3d40; border-radius:6px; padding:4px 8px; font:inherit; }
+  .bar{ height:2px; background:var(--ln); margin-top:14px; border-radius:2px; overflow:hidden; }
+  .bar i{ display:block; height:100%; width:0; background:var(--ac); transition:width .3s; }
+  #log{ font:12px/1.6 ui-monospace,Menlo,monospace; color:var(--mu); white-space:pre-wrap; margin-top:14px; }
+  ul.mods{ list-style:none; padding:0; margin:14px 0 0; font-size:14px; }
+  ul.mods li{ padding:6px 0; border-bottom:1px solid var(--ln); display:flex; justify-content:space-between; gap:12px; }
+  ul.mods li span:last-child{ color:var(--mu); }
+  code{ font:13px ui-monospace,Menlo,monospace; color:var(--ac); }
+  @media (max-width:520px){ .card{ width:100%; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>[Hz] · preparar</h1>
+  <p>Genera los dos archivos que el motor necesita: <code>mindar/targets.mind</code> (los triggers) y <code>hz-datos.js</code> (el marco de luz de cada trigger, las formas de puntos de los modelos y las miniaturas para la vista previa). Todo se procesa acá, en el navegador.</p>
+
+  <section>
+    <h2>1 · Triggers</h2>
+    <p>El orden importa: el primero es la escena 0 de <code>hz.config.js</code>, el segundo la 1, y así.</p>
+    <label class="btn">Agregar imágenes<input id="fImg" type="file" accept="image/*" multiple></label>
+    <div class="opts">
+      <span>centro libre <input id="radio" type="range" min="0" max="0.45" step="0.01" value="0.25"> <b id="radioV">0.25</b></span>
+      <span>trazo del marco <select id="tinta"><option value="auto">automático</option><option value="clara">claro sobre oscuro</option><option value="oscura">oscuro sobre claro</option></select></span>
+    </div>
+    <div id="trig" class="row"></div>
+  </section>
+
+  <section>
+    <h2>2 · Modelos</h2>
+    <p>Los GLB de las escenas que forman puntos (condensación, palabra, génesis). Se guardan por nombre de archivo: tienen que llamarse igual que en <code>hz.config.js</code>. Los que falten se calculan en el teléfono al cargar, con una pequeña espera.</p>
+    <label class="btn">Agregar GLB<input id="fGlb" type="file" accept=".glb,.gltf" multiple></label>
+    <label class="btn">Sumar a un hz-datos.js anterior<input id="fPrev" type="file" accept=".js"></label>
+    <ul id="mods" class="mods"></ul>
+  </section>
+
+  <section>
+    <h2>3 · Exportar</h2>
+    <button id="bMind" class="main" disabled>Compilar targets.mind</button>
+    <button id="bDatos" class="main" disabled>Descargar hz-datos.js</button>
+    <div class="bar"><i id="prog"></i></div>
+    <div id="log"></div>
+  </section>
+</main>
+
+<script>
+(function(){
+  const $=id=>document.getElementById(id), log=m=>{ $('log').textContent+=m+'\n'; };
+  const T=AFRAME.THREE;
+  let trig=[];            // {name, img, mask, glow, mini, asp}
+  const formas={}; let prev=null;
+
+  // ---------------- marcos ----------------
+  function mascara(img){
+    const S=1024, rad=parseFloat($('radio').value), modo=$('tinta').value;
+    const cv=document.createElement('canvas'); cv.width=cv.height=S; const x=cv.getContext('2d');
+    x.drawImage(img,0,0,S,S); const px=x.getImageData(0,0,S,S), d=px.data;
+    const w=img.naturalWidth,h=img.naturalHeight, mn=Math.min(w,h), kx=w/mn, ky=h/mn;
+    const C=new Float32Array(S*S), hist=new Float64Array(256), hr=[new Uint32Array(256),new Uint32Array(256),new Uint32Array(256)];
+    for(let j=0;j<S;j++) for(let i=0;i<S;i++){ const k=j*S+i;
+      const r=Math.hypot((i/S-0.5)*kx,(j/S-0.5)*ky);                        // distancia real al centro (en proporción de la imagen)
+      C[k]=rad>0?sm(rad-0.006,rad+0.006,r):1; if(C[k]>0.5) for(let e=0;e<3;e++) hr[e][d[k*4+e]]++; }
+    // color de fondo = mediana del marco; el trazo es lo que se aparta de ese color (sirve para oro sobre verde, blanco sobre negro, etc.)
+    const med=hr.map(h=>{ let t=0,n=h.reduce((a,b)=>a+b,0)/2; for(let v=0;v<256;v++){ t+=h[v]; if(t>=n) return v; } return 0; });
+    let L=new Float32Array(S*S);
+    for(let k=0;k<S*S;k++){
+      if(modo==='auto') L[k]=Math.min(255,Math.hypot(d[k*4]-med[0],d[k*4+1]-med[1],d[k*4+2]-med[2])*0.8);
+      else { const l=0.3*d[k*4]+0.59*d[k*4+1]+0.11*d[k*4+2]; L[k]=modo==='clara'?l:255-l; } }
+    L=blur(L,S,1);                                                          // quita el grano del papel antes de separar
+    for(let k=0;k<S*S;k++) if(C[k]>0.5) hist[Math.round(L[k])]++;
+    // umbral de Otsu sobre la zona del marco
+    let tot=0,sum=0; for(let i=0;i<256;i++){ tot+=hist[i]; sum+=i*hist[i]; }
+    let wB=0,sB=0,best=0,th=128; for(let i=0;i<256;i++){ wB+=hist[i]; if(!wB) continue; const wF=tot-wB; if(!wF) break; sB+=i*hist[i];
+      const mB=sB/wB,mF=(sum-sB)/wF,v=wB*wF*(mB-mF)*(mB-mF); if(v>best){ best=v; th=i; } }
+    if(modo==='auto') th=Math.max(th,28);                                   // piso: el grano nunca cuenta como trazo
+    const R=new Float32Array(S*S);
+    for(let k=0;k<S*S;k++){ R[k]=sm(th-8,th+8,L[k])*C[k]; d[k*4]=d[k*4+1]=d[k*4+2]=Math.round(R[k]*255); d[k*4+3]=255; }
+    x.putImageData(px,0,0);
+    // brillo: G cercano y B resplandor, a 256px
+    const s=256, f=S/s, low=new Float32Array(s*s), cl=new Float32Array(s*s);
+    for(let j=0;j<s;j++) for(let i=0;i<s;i++){ let a=0; for(let v=0;v<f;v++) for(let u=0;u<f;u++) a+=R[(j*f+v)*S+i*f+u]; low[j*s+i]=a/(f*f);
+      const r=Math.hypot(((i+0.5)/s-0.5)*kx,((j+0.5)/s-0.5)*ky); cl[j*s+i]=rad>0?sm(rad-0.035,rad+0.02,r):1; }
+    const G=norm(blur(low,s,3)), B=norm(blur(low,s,11));
+    const gc=document.createElement('canvas'); gc.width=gc.height=s; const gx=gc.getContext('2d'), gd=gx.createImageData(s,s);
+    for(let k=0;k<s*s;k++){ const g=G[k]*cl[k], b=B[k]*Math.max(cl[k],0.0); gd.data[k*4]=Math.round(g*255); gd.data[k*4+1]=Math.round(g*255); gd.data[k*4+2]=Math.round(b*255); gd.data[k*4+3]=255; }
+    gx.putImageData(gd,0,0);
+    return {mask:cv.toDataURL('image/webp',0.8), glow:gc.toDataURL('image/webp',0.9), canvas:cv};
+  }
+  function sm(a,b,v){ const t=Math.min(1,Math.max(0,(v-a)/(b-a))); return t*t*(3-2*t); }
+  function blur(src,s,r){ let a=src.slice(), b=new Float32Array(s*s);
+    for(let pass=0;pass<3;pass++){
+      for(let j=0;j<s;j++){ let acc=0; for(let i=-r;i<=r;i++) acc+=a[j*s+Math.min(s-1,Math.max(0,i))];
+        for(let i=0;i<s;i++){ b[j*s+i]=acc/(2*r+1); acc+=a[j*s+Math.min(s-1,i+r+1)]-a[j*s+Math.max(0,i-r)]; } }
+      for(let i=0;i<s;i++){ let acc=0; for(let j=-r;j<=r;j++) acc+=b[Math.min(s-1,Math.max(0,j))*s+i];
+        for(let j=0;j<s;j++){ a[j*s+i]=acc/(2*r+1); acc+=b[Math.min(s-1,j+r+1)*s+i]-b[Math.max(0,j-r)*s+i]; } } }
+    return a; }
+  function norm(a){ const v=Array.from(a).filter(x=>x>0.002).sort((p,q)=>p-q); const m=v.length?v[Math.floor(v.length*0.92)]:1; return a.map(x=>Math.min(1,x/(m||1))); }
+  function mini(img){ const W=384, asp=img.naturalHeight/img.naturalWidth, cv=document.createElement('canvas'); cv.width=W; cv.height=Math.round(W*asp);
+    cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height); return {url:cv.toDataURL('image/jpeg',0.8),asp}; }
+
+  function rehacer(){ trig.forEach(t=>{ const m=mascara(t.img); t.mask=m.mask; t.glow=m.glow; t.prev=m.canvas; }); pintar(); }
+  function pintar(){
+    const box=$('trig'); box.innerHTML='';
+    trig.forEach((t,i)=>{
+      const c=document.createElement('div'); c.className='card';
+      c.innerHTML='<div class="n">ESCENA '+i+'</div><div class="pair"></div><div class="nm"></div><div class="ctl"><button data-a="up">↑</button><button data-a="dn">↓</button><button data-a="x">✕</button></div>';
+      const im=new Image(); im.src=t.img.src; c.querySelector('.pair').append(im); const pv=document.createElement('img'); pv.src=t.mask; c.querySelector('.pair').append(pv);
+      c.querySelector('.nm').textContent=t.name;
+      c.querySelectorAll('button').forEach(b=>b.onclick=()=>{ const a=b.dataset.a;
+        if(a==='x') trig.splice(i,1); else { const j=a==='up'?i-1:i+1; if(j<0||j>=trig.length) return; [trig[i],trig[j]]=[trig[j],trig[i]]; } pintar(); estado(); });
+      box.append(c);
+    });
+  }
+  function estado(){ $('bMind').disabled=!trig.length; $('bDatos').disabled=!trig.length&&!Object.keys(formas).length&&!prev; }
+
+  const leerImg=f=>new Promise((ok,ko)=>{ const r=new FileReader(); r.onload=()=>{ const im=new Image(); im.onload=()=>ok(im); im.onerror=ko; im.src=r.result; }; r.readAsDataURL(f); });
+  $('fImg').onchange=async e=>{
+    for(const f of [...e.target.files].sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}))){
+      const img=await leerImg(f), m=mascara(img), mi=mini(img);
+      trig.push({name:f.name,img,mask:m.mask,glow:m.glow,mini:mi.url,asp:mi.asp});
+    }
+    e.target.value=''; pintar(); estado();
+  };
+  $('radio').oninput=()=>{ $('radioV').textContent=$('radio').value; };
+  $('radio').onchange=rehacer; $('tinta').onchange=rehacer;
+
+  // ---------------- formas ----------------
+  function muestrear(root,n){
+    const tris=[],acc=[]; let tot=0; const a=new T.Vector3(),b=new T.Vector3(),c=new T.Vector3(),ab=new T.Vector3(),ac=new T.Vector3();
+    root.updateMatrixWorld(true);
+    root.traverse(o=>{ if(!o.isMesh||!o.geometry||!o.geometry.attributes.position) return;
+      const M=new T.Matrix4(); for(let k=o;k;k=k.parent){ k.updateMatrix(); M.premultiply(k.matrix); }
+      const pa=o.geometry.attributes.position, ix=o.geometry.index, cnt=ix?ix.count:pa.count;
+      for(let t=0;t+2<cnt;t+=3){ const i0=ix?ix.getX(t):t,i1=ix?ix.getX(t+1):t+1,i2=ix?ix.getX(t+2):t+2;
+        a.fromBufferAttribute(pa,i0).applyMatrix4(M); b.fromBufferAttribute(pa,i1).applyMatrix4(M); c.fromBufferAttribute(pa,i2).applyMatrix4(M);
+        const ar=ab.subVectors(b,a).cross(ac.subVectors(c,a)).length()*0.5; if(!(ar>0)) continue; tot+=ar; acc.push(tot); tris.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z); } });
+    const out=new Float32Array(n*3); if(!acc.length) return {out,tri:0};
+    for(let k=0;k<n;k++){ const r=Math.random()*tot; let lo=0,hi=acc.length-1; while(lo<hi){ const m=(lo+hi)>>1; if(acc[m]<r) lo=m+1; else hi=m; }
+      let u=Math.random(),v=Math.random(); if(u+v>1){ u=1-u; v=1-v; } const j=lo*9;
+      for(let e=0;e<3;e++) out[k*3+e]=tris[j+e]+(tris[j+3+e]-tris[j+e])*u+(tris[j+6+e]-tris[j+e])*v; }
+    return {out,tri:acc.length};
+  }
+  function empaquetar(P){ let s=0; for(const v of P) s=Math.max(s,Math.abs(v)); s=s||1; const q=new Int16Array(P.length);
+    for(let i=0;i<P.length;i++) q[i]=Math.round(P[i]/s*32767); const u8=new Uint8Array(q.buffer); let bin=''; for(let i=0;i<u8.length;i+=8192) bin+=String.fromCharCode.apply(null,u8.subarray(i,i+8192));
+    return {s,n:P.length/3,b64:btoa(bin)}; }
+  $('fGlb').onchange=async e=>{
+    for(const f of e.target.files){
+      const li=document.createElement('li'); li.innerHTML='<span></span><span>leyendo…</span>'; li.firstChild.textContent=f.name; $('mods').append(li);
+      try{
+        const buf=await f.arrayBuffer(); const gl=await new Promise((ok,ko)=>new T.GLTFLoader().parse(buf,'',ok,ko));
+        const {out,tri}=muestrear(gl.scene,6000); if(!tri) throw new Error('sin triángulos');
+        formas[f.name]=empaquetar(out); li.lastChild.textContent=tri.toLocaleString('es-AR')+' triángulos · forma lista';
+      }catch(err){ li.lastChild.textContent='no se pudo leer ('+(err.message||err)+')'; }
+    }
+    e.target.value=''; estado();
+  };
+  $('fPrev').onchange=async e=>{ const f=e.target.files[0]; if(!f) return; try{ const w={}; new Function('window',await f.text())(w); prev=w.HZ_DATOS||null;
+      log('hz-datos.js anterior: '+Object.keys(prev.formas||{}).length+' formas, '+Object.keys(prev.marcos||{}).length+' marcos (lo nuevo pisa lo anterior)'); }catch(err){ log('no se pudo leer el archivo anterior'); } e.target.value=''; estado(); };
+
+  // ---------------- exportar ----------------
+  const bajar=(data,name,type)=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([data],{type})); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); };
+  $('bDatos').onclick=()=>{
+    const D={formas:Object.assign({},prev&&prev.formas,formas),marcos:Object.assign({},prev&&prev.marcos),miniaturas:Object.assign({},prev&&prev.miniaturas),aspectos:Object.assign({},prev&&prev.aspectos)};
+    trig.forEach((t,i)=>{ D.marcos[i]=[t.mask,t.glow]; D.miniaturas[i]=t.mini; D.aspectos[i]=+t.asp.toFixed(4); });
+    const js='// generado por preparar.html · '+new Date().toLocaleString('es-AR')+'\n// triggers: '+trig.map((t,i)=>i+'='+t.name).join(', ')+'\n// formas: '+Object.keys(D.formas).join(', ')+'\nwindow.HZ_DATOS='+JSON.stringify(D)+';\n';
+    bajar(js,'hz-datos.js','text/javascript'); log('hz-datos.js · '+(js.length/1024/1024).toFixed(2)+' MB');
+  };
+  $('bMind').onclick=async ()=>{
+    $('bMind').disabled=true; log('compilando '+trig.length+' triggers (puede tardar un minuto por imagen)…');
+    try{
+      const comp=new window.MINDAR.IMAGE.Compiler();
+      await comp.compileImageTargets(trig.map(t=>t.img),p=>{ $('prog').style.width=p.toFixed(1)+'%'; });
+      const data=await comp.exportData(); bajar(data,'targets.mind','application/octet-stream');
+      log('targets.mind listo · va en la carpeta mindar/');
+    }catch(err){ log('error al compilar: '+(err.message||err)); }
+    $('bMind').disabled=false;
+  };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,2395 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>[Hz]</title>
+
+  <!-- lo reemplazable vive afuera: textos, paleta y escenas en hz.config.js; marcos y formas en hz-datos.js (lo genera preparar.html) -->
+  <script src="./hz.config.js"></script>
+  <script src="./hz-datos.js"></script>
+  <script>
+  window.HZ=window.HZ||{}; window.HZ_DATOS=window.HZ_DATOS||{}; ['formas','marcos','miniaturas'].forEach(k=>{ if(!HZ_DATOS[k]) HZ_DATOS[k]={}; });
+  // PALETA: todos los colores del motor pasan por HZC(). Los tonos dorados (matiz 12°-62°) se llevan al matiz de HZ.paleta;
+  // el resto (cian del agua, blancos, negros) queda igual. matiz 40 + saturacion 1 = el oro original.
+  window.HZC=function(c){
+    const P=window.HZ.paleta||{}; if(P.modo!=='bn' && P.matiz==null) return c;
+    if(typeof c==='string' && c.indexOf(',')>=0) return c.split(',').map(x=>HZC(x.trim())).join(',');
+    const num=typeof c==='number', hex=num?('#'+c.toString(16).padStart(6,'0')):String(c);
+    const m=/^#([0-9a-f]{6})$/i.exec(hex); if(!m) return c;
+    let r=parseInt(m[1].slice(0,2),16)/255,g=parseInt(m[1].slice(2,4),16)/255,b=parseInt(m[1].slice(4,6),16)/255;
+    if(P.modo==='bn'){                                                       // blanco y negro: cada color pasa a su gris de igual luminancia
+      const y=Math.round(Math.min(1,Math.pow(0.2126*r+0.7152*g+0.0722*b,1/(P.contraste||1)))*255), o=(y<<16)|(y<<8)|y;
+      return num?o:'#'+o.toString(16).padStart(6,'0'); }
+    const mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2; let h=0,sa=0;
+    if(mx!==mn){ const d=mx-mn; sa=l>0.5?d/(2-mx-mn):d/(mx+mn);
+      h=mx===r?((g-b)/d+(g<b?6:0)):mx===g?((b-r)/d+2):((r-g)/d+4); h*=60; }
+    if(sa<0.08 || h<12 || h>62) return c;
+    h=((P.matiz+(h-40))%360+360)%360; sa=Math.min(1,sa*(P.saturacion==null?1:P.saturacion));
+    const q=l<0.5?l*(1+sa):l+sa-l*sa, p=2*l-q, f=t=>{ t=(t%1+1)%1; return t<1/6?p+(q-p)*6*t:t<1/2?q:t<2/3?p+(q-p)*(2/3-t)*6:p; };
+    const to=v=>Math.round(Math.min(1,Math.max(0,v))*255);
+    const out=(to(f(h/360+1/3))<<16)|(to(f(h/360))<<8)|to(f(h/360-1/3));
+    return num?out:'#'+out.toString(16).padStart(6,'0');
+  };
+  // BLANCO Y NEGRO garantizado: también las texturas de los GLB, los colores de vértice y los tonos fijos de los shaders
+  (function(){ const P=window.HZ.paleta||{}; if(P.modo!=='bn') return;
+    const st=document.createElement('style');
+    st.textContent='canvas.a-canvas{filter:grayscale(1)'+(P.contraste&&P.contraste!==1?' contrast('+P.contraste+')':'')+'}'+(P.camara!==false?'video{filter:grayscale(1)}':'');
+    document.head.appendChild(st); })();
+  // IMÁGENES GENERATIVAS: 'gen:interferencia' (dos fuentes de onda), 'gen:anillos' (anillos concéntricos que se quiebran), 'gen:moire' (dos tramas que se cruzan)
+  window.hzGenerativa=function(spec){
+    const tipo=String(spec).replace(/^gen:/,'')||'interferencia', S=512, cv=document.createElement('canvas'); cv.width=cv.height=S;
+    const x=cv.getContext('2d'), im=x.createImageData(S,S), d=im.data;
+    for(let j=0;j<S;j++) for(let i=0;i<S;i++){
+      const u=(i+0.5)/S*2-1, v=(j+0.5)/S*2-1, r=Math.hypot(u,v); let w=0;
+      if(tipo==='anillos'){ const a=Math.atan2(v,u); w=Math.cos(r*58+Math.sin(a*3)*1.6*r+Math.sin(a*7)*0.5); }
+      else if(tipo==='moire'){ w=Math.cos(Math.hypot(u-0.12,v)*90)*Math.cos(Math.hypot(u+0.12,v+0.05)*90); }
+      else { w=Math.cos(Math.hypot(u-0.28,v)*48)+Math.cos(Math.hypot(u+0.28,v)*48); w*=0.5; }
+      const line=Math.pow(Math.max(0,w),6);                                   // crestas finas en blanco
+      const edge=1-Math.min(1,Math.max(0,(r-0.62)/0.34)); const a=line*edge*edge;
+      const k=(j*S+i)*4; d[k]=d[k+1]=d[k+2]=255; d[k+3]=Math.round(Math.min(1,a*1.4)*255); }
+    x.putImageData(im,0,0); return cv.toDataURL('image/png');
+  };
+  window.hzSrc=function(src){ return /^gen:/.test(src||'')?hzGenerativa(src):src; };
+  // FORMAS: nube de puntos de un modelo. Si preparar.html la dejó en hz-datos.js arranca al instante;
+  // si no, se muestrea la superficie del GLB cuando termina de bajar (la secuencia espera al modelo).
+  window.hzClave=function(src){
+    if(src&&src[0]==='#'){ const a=document.querySelector(src); src=a?a.getAttribute('src'):src; }
+    return decodeURIComponent(String(src||'').split('?')[0].split('/').pop());
+  };
+  window.hzDecodificar=function(B,n){
+    const raw=atob(B.b64), u8=new Uint8Array(raw.length); for(let i=0;i<raw.length;i++) u8[i]=raw.charCodeAt(i);
+    const q=new Int16Array(u8.buffer), N=Math.min(n||B.n,B.n), out=new Float32Array(N*3);
+    for(let i=0;i<N*3;i++) out[i]=q[i]/32767*B.s; return out;
+  };
+  // muestreo por área sobre todas las mallas, en el espacio del a-gltf-model (igual que las formas precalculadas)
+  window.hzMuestrear=function(root,stop,n,THREE){
+    const T=THREE||AFRAME.THREE, tris=[], acc=[]; let tot=0;
+    const a=new T.Vector3(),b=new T.Vector3(),c=new T.Vector3(),ab=new T.Vector3(),ac=new T.Vector3();
+    root.traverse(o=>{
+      if(!o.isMesh||!o.geometry||!o.geometry.attributes.position) return;
+      const M=new T.Matrix4(); for(let k=o;k&&k!==stop;k=k.parent){ k.updateMatrix(); M.premultiply(k.matrix); }
+      const pa=o.geometry.attributes.position, ix=o.geometry.index, cnt=ix?ix.count:pa.count;
+      for(let t=0;t+2<cnt;t+=3){
+        const i0=ix?ix.getX(t):t,i1=ix?ix.getX(t+1):t+1,i2=ix?ix.getX(t+2):t+2;
+        a.fromBufferAttribute(pa,i0).applyMatrix4(M); b.fromBufferAttribute(pa,i1).applyMatrix4(M); c.fromBufferAttribute(pa,i2).applyMatrix4(M);
+        const ar=ab.subVectors(b,a).cross(ac.subVectors(c,a)).length()*0.5; if(!(ar>0)) continue;
+        tot+=ar; acc.push(tot); tris.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
+      }
+    });
+    const out=new Float32Array(n*3); if(!acc.length) return out;
+    for(let k=0;k<n;k++){
+      const r=Math.random()*tot; let lo=0,hi=acc.length-1; while(lo<hi){ const m=(lo+hi)>>1; if(acc[m]<r) lo=m+1; else hi=m; }
+      let u=Math.random(),v=Math.random(); if(u+v>1){ u=1-u; v=1-v; } const j=lo*9;
+      for(let e=0;e<3;e++) out[k*3+e]=tris[j+e]+(tris[j+3+e]-tris[j+e])*u+(tris[j+6+e]-tris[j+e])*v;
+    }
+    return out;
+  };
+  window.hzForma=function(modelEl,n,cb){
+    const F=HZ_DATOS.formas[hzClave(modelEl.getAttribute('src'))];
+    if(F){ cb(hzDecodificar(F,n)); return; }
+    const go=()=>{ const root=modelEl.getObject3D('mesh'); if(root) cb(hzMuestrear(root,modelEl.object3D,n)); };
+    if(modelEl.getObject3D('mesh')) go(); else modelEl.addEventListener('model-loaded',go,{once:true});
+  };
+  // busca una malla por nombre (el nombre puede estar en la malla o en cualquier nodo padre); si no aparece, usa la malla más grande
+  window.hzMalla=function(root,name){
+    const norm=v=>(v||'').toLowerCase().replace(/[^a-z0-9]/g,''); let hit=null, big=null, bn=-1;
+    root.traverse(o=>{ if(!o.isMesh) return;
+      const vc=o.geometry.attributes.position.count; if(vc>bn){ bn=vc; big=o; }
+      if(hit||!name) return; let k=o; while(k){ if(norm(k.name)===norm(name)){ hit=o; break; } k=k.parent; } });
+    return hit||big;
+  };
+  </script>
+
+  <!-- A-Frame + MindAR -->
+  <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  <!-- cámara en alta definición: MindAR no pide resolución y el teléfono entrega 640x480, que estirado a pantalla completa se ve pixelado -->
+  <script>
+  (function(){
+    const md=navigator.mediaDevices; if(!md||!md.getUserMedia) return;
+    const orig=md.getUserMedia.bind(md);
+    md.getUserMedia=function(c){
+      try{ if(c&&c.video&&typeof c.video==='object'&&c.video.width===undefined){
+        c=Object.assign({},c,{video:Object.assign({width:{ideal:1280},height:{ideal:720}},c.video)}); } }catch(e){}
+      return orig(c).catch(err=>{ if(c&&c.video&&c.video.width){ const v=Object.assign({},c.video); delete v.width; delete v.height; return orig(Object.assign({},c,{video:v})); } throw err; });
+    };
+  })();
+  </script>
+  <style>
+    body{margin:0;overflow:hidden;background:#000}
+    #audio-btn{
+      position:fixed; right:12px; bottom:12px; z-index:999999;
+      width:42px; height:42px; border-radius:999px; border:none;
+      background:rgba(255,255,255,0.12); color:#fff; font-size:20px; line-height:42px;
+      display:flex; align-items:center; justify-content:center; cursor:pointer;
+      backdrop-filter: blur(4px);
+      box-shadow: 0 2px 10px rgba(0,0,0,.35);
+    }
+    #audio-btn:hover{ background:rgba(255,255,255,0.22); }
+    #audio-btn.hidden{ display:none; }
+    /* pantalla de carga: negro, dorado y serif, en lugar del celeste de A-Frame */
+    body .a-loader-title{
+      background:transparent; color:var(--hz-tinta,#E2B865); font-family:Georgia,'Times New Roman',serif; font-weight:400;
+      font-size:15px; line-height:1.5; height:auto; top:calc(50% - 190px); padding:0 28px; text-align:center;
+    }
+    .a-loader-title .lt-tit{ display:block; font-size:19px; letter-spacing:.26em; text-transform:uppercase; }
+    .a-loader-title .lt-sub{ display:block; margin-top:4px; font-size:14px; letter-spacing:.12em; font-style:italic; opacity:.8; }
+    .a-loader-title .lt-frase{ display:block; margin:26px auto 0; max-width:300px; font-size:15px; font-style:italic; color:rgba(var(--hz-tinta-rgb,226,184,101),.75); }
+    .a-loader-title .lt-guia{ position:fixed; left:0; right:0; bottom:64px; padding:0 28px; font-size:13px; letter-spacing:.06em; color:rgba(var(--hz-tinta-rgb,226,184,101),.75); }
+    .a-loader-title .lt-guia > span{ display:block; }
+    .a-loader-title .lt-guia2{ margin-top:6px; font-size:12px; font-style:italic; letter-spacing:.03em; color:rgba(var(--hz-tinta-rgb,226,184,101),.55); }
+    .a-loader-title .lt-tel{ display:block; margin:0 auto 12px; color:rgba(var(--hz-tinta-rgb,226,184,101),.8); transform-origin:50% 90%; animation:ltTilt 2.8s ease-in-out infinite; }
+    @keyframes ltTilt{ 0%,100%{ transform:rotate(-14deg); } 50%{ transform:rotate(14deg) translateY(-2px); } }
+  </style>
+
+  <!-- RIPPLE (onda de expansión) -->
+  <script>
+  AFRAME.registerComponent('ripple-surface',{
+    schema:{width:{default:2.4},height:{default:2.4},speed:{default:0.14},damp:{default:1.0},lineWidth:{default:36.0},lineStrength:{default:2.7}},
+    init(){
+      const T=AFRAME.THREE, d=this.data, MAX=12;
+      this.MAX=MAX; this._head=0;
+      const geo=new T.PlaneGeometry(d.width,d.height,1,1);
+      this.uniforms={
+        iTime:{value:0}, count:{value:0},
+        centers:{value:new Array(MAX*2).fill(0)},
+        startT:{value:new Array(MAX).fill(-999)},
+        speed:{value:d.speed}, damp:{value:d.damp},
+        lw:{value:d.lineWidth}, ls:{value:d.lineStrength}
+      };
+      const vert=`varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);} `;
+      const frag=`precision highp float; varying vec2 vUv; uniform float iTime; uniform int count; uniform float centers[24]; uniform float startT[12]; uniform float speed,damp,lw,ls;
+      float shellN(float w,float width){ return exp(-abs(w)/width);}
+      void main(){
+        float ring=0.0;
+        for(int i=0;i<12;i++){
+          if(i>=count) break;
+          vec2 c=vec2(centers[2*i], centers[2*i+1]);
+          float dt=max(0.0, iTime - startT[i]);
+          float r=distance(vUv,c);
+          float w1=r - speed*dt;
+          float s1=shellN(w1,0.012);
+          float life=exp(-damp*dt*0.85);
+          ring=max(ring, life*s1);
+        }
+        vec3 col = vec3(7.0/255.0, 163.0/255.0, 184.0/255.0) * (ls*ring); // #07a3b8
+
+        gl_FragColor=vec4(col,ring);
+      }`;
+      const mat=new T.ShaderMaterial({uniforms:this.uniforms,vertexShader:vert,fragmentShader:frag,transparent:true,depthTest:false,depthWrite:false,side:T.DoubleSide,blending:T.AdditiveBlending});
+      this.mesh=new T.Mesh(geo,mat); this.mesh.renderOrder=999; this.el.object3D.add(this.mesh);
+      this.clock=new T.Clock();
+    },
+    reset(){const u=this.uniforms; u.iTime.value=0; u.count.value=0; u.centers.value.fill(0); u.startT.value.fill(-999); this._head=0;},
+    addDrop(nx,ny){
+      const u=this.uniforms,MAX=this.MAX;
+      const i=this._head%MAX; this._head++;
+      u.centers.value[i*2]=nx; u.centers.value[i*2+1]=ny;
+      u.startT.value[i]=u.iTime.value;
+      u.count.value=Math.min(u.count.value+1,MAX);
+    },
+    tick(){this.uniforms.iTime.value+=this.clock.getDelta();}
+  });
+  </script>
+
+  <!-- Tilt-drops (múltiples gotas con inclinación) -->
+  <script>
+  AFRAME.registerComponent('tilt-drops',{
+    schema:{minInterval:{default:800},maxRate:{default:90},sens:{default:1.2},thresh:{default:4},jitterBase:{default:0.08},jitterMax:{default:0.28},burstTilt:{default:10},burstSize:{default:6},maxPerFrame:{default:8}},
+    init(){
+      this.beta=0; this.gamma=0; this.last=0; this.prevBeta=0; this.prevGamma=0;
+      const ask=async()=>{
+        try{
+          if(typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function'){
+            const r=await DeviceOrientationEvent.requestPermission(); if(r!=='granted')return;
+          }
+          window.addEventListener('deviceorientation',(e)=>{if(e.beta==null||e.gamma==null)return; this.prevBeta=this.beta; this.prevGamma=this.gamma; this.beta=e.beta; this.gamma=e.gamma;},{passive:true});
+        }catch(e){}
+      };
+      window.addEventListener('pointerdown',ask,{once:true});
+      ask();
+    },
+    _c(v){return Math.min(1,Math.max(0,v));},
+    _rnd(){return Math.random()*2-1;},
+    tick(){
+      const now=performance.now();
+      const tilt=Math.hypot(this.beta,this.gamma)*this.data.sens;
+      const k=THREE.MathUtils.smoothstep(tilt,this.data.thresh,60);
+      const interval=THREE.MathUtils.clamp(this.data.minInterval-(this.data.minInterval-this.data.maxRate)*k,this.data.maxRate,this.data.minInterval);
+      let n=Math.floor(k*4);
+      const jerk=Math.abs(this.beta-this.prevBeta)+Math.abs(this.gamma-this.prevGamma);
+      if(tilt>this.data.burstTilt||jerk>8)n+=this.data.burstSize;
+      if(now-this.last>interval*0.6)n=Math.max(n,1);
+      n=Math.min(n,this.data.maxPerFrame);
+      if(n>0){
+        const ripple=this.el.components['ripple-surface'];
+        if(ripple){
+          let cx=this._c((this.gamma/60)*0.4+0.5);
+          let cy=this._c(((-this.beta)/90)*0.4+0.5);
+          const r=this.data.jitterBase+this.data.jitterMax*k;
+          for(let i=0;i<n;i++){
+            const a=Math.random()*Math.PI*2, rr=r*Math.sqrt(Math.random());
+            const nx=this._c(cx+Math.cos(a)*rr+this._rnd()*0.02);
+            const ny=this._c(cy+Math.sin(a)*rr+this._rnd()*0.02);
+            ripple.addDrop(nx,ny);
+          }
+          this.last=now;
+        }
+      }
+    }
+  });
+  </script>
+
+  <!-- Lluvia -->
+  <script>
+  AFRAME.registerComponent('lluvia',{
+    schema:{count:{default:3000},area:{default:3},yTop:{default:3},yBot:{default:-1.5},sizePx:{default:6},speed:{default:0.035},trail:{default:false},trailEvery:{default:120},trailLife:{default:700},trailOpacity:{default:0.35},trailDrift:{default:-0.25},trailMax:{default:4}},
+    init(){
+      const T=AFRAME.THREE,d=this.data,s=64,c=document.createElement('canvas');c.width=c.height=s;
+      const x=c.getContext('2d'),g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+      g.addColorStop(0,'rgba(255,255,255,1)');g.addColorStop(0.5,'rgba(255,255,255,0.6)');g.addColorStop(1,'rgba(255,255,255,0)');
+      x.fillStyle=g; x.fillRect(0,0,s,s); const tex=new T.CanvasTexture(c); tex.needsUpdate=true;
+      const N=d.count,A=d.area,YT=d.yTop,YB=d.yBot; this.geo=new T.BufferGeometry();
+      this.pos=new Float32Array(N*3); this.vy=new Float32Array(N); this.dx=new Float32Array(N); this.dz=new Float32Array(N);
+      for(let i=0;i<N;i++){this.pos[3*i]=(Math.random()-0.5)*A*2; this.pos[3*i+1]=Math.random()*(YT-YB)+YB; this.pos[3*i+2]=(Math.random()-0.5)*A*2;
+        this.vy[i]=d.speed*(0.7+Math.random()*0.6); this.dx[i]=(Math.random()-0.5)*0.0025; this.dz[i]=(Math.random()-0.5)*0.0025;}
+      this.geo.setAttribute('position',new T.BufferAttribute(this.pos,3));
+      const mat=new T.PointsMaterial({map:tex,size:d.sizePx,sizeAttenuation:false,transparent:true,opacity:0.95,alphaTest:0.01,depthTest:false,depthWrite:false});
+      this.points=new T.Points(this.geo,mat); this.points.frustumCulled=false; this.el.object3D.add(this.points);
+      this._ghosts=[]; this._acc=0; this._clock=new T.Clock(); this._tex=tex;
+    },
+    _spawnGhost(){
+      const T=AFRAME.THREE,d=this.data;
+      if(this._ghosts.length>=d.trailMax){const old=this._ghosts.shift(); this.el.object3D.remove(old.obj); old.obj.geometry.dispose(); old.obj.material.dispose();}
+      const geoG=new T.BufferGeometry(); geoG.setAttribute('position',new T.BufferAttribute(this.pos.slice(0),3));
+      const matG=new T.PointsMaterial({map:this._tex,size:this.data.sizePx,sizeAttenuation:false,transparent:true,opacity:d.trailOpacity,depthTest:false,depthWrite:false,blending:T.AdditiveBlending});
+      const ghost=new T.Points(geoG,matG); ghost.renderOrder=997; this.el.object3D.add(ghost); this._ghosts.push({obj:ghost,t:0});
+    },
+    tick(){
+      const d=this.data,A=d.area,YT=d.yTop,YB=d.yBot,p=this.pos,N=p.length/3;
+      for(let i=0;i<N;i++){p[3*i]+=this.dx[i]; p[3*i+2]+=this.dz[i]; p[3*i+1]-=this.vy[i]; if(p[3*i+1]<YB){p[3*i+1]=YT+Math.random()*0.2; p[3*i]=(Math.random()-0.5)*A*2; p[3*i+2]=(Math.random()-0.5)*A*2;}}
+      this.geo.attributes.position.needsUpdate=true;
+      const dt=this._clock.getDelta(); if(d.trail){this._acc+=dt*1000; if(this._acc>=d.trailEvery){this._acc=0; this._spawnGhost();}
+        for(let i=this._ghosts.length-1;i>=0;i--){const g=this._ghosts[i]; g.t+=dt*1000; const k=Math.min(1,g.t/d.trailLife);
+          g.obj.material.opacity=d.trailOpacity*(1-k); g.obj.position.y+=d.trailDrift*dt; if(k>=1){this.el.object3D.remove(g.obj); g.obj.geometry.dispose(); g.obj.material.dispose(); this._ghosts.splice(i,1);}}}
+    }
+  });
+  </script>
+
+  <!-- Niebla -->
+  <script>
+  AFRAME.registerComponent('niebla',{schema:{count:{default:1800},area:{default:3.4},yTop:{default:2.2},yBot:{default:-1.6},sizePx:{default:28},speed:{default:0.006},opacity:{default:0.28}},init(){const T=AFRAME.THREE,d=this.data,s=64,c=document.createElement('canvas');c.width=c.height=s;const x=c.getContext('2d'),g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);g.addColorStop(0,'rgba(255,255,255,0.9)');g.addColorStop(0.5,'rgba(255,255,255,0.35)');g.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=g;x.fillRect(0,0,s,s);const tex=new T.CanvasTexture(c);tex.needsUpdate=true;const N=d.count,A=d.area,YT=d.yTop,YB=d.yBot;this.geo=new T.BufferGeometry();this.pos=new Float32Array(N*3);this.vy=new Float32Array(N);for(let i=0;i<N;i++){this.pos[3*i]=(Math.random()-0.5)*A*2.2;this.pos[3*i+1]=Math.random()*(YT-YB)+YB;this.pos[3*i+2]=(Math.random()-0.5)*A*2.2;this.vy[i]=d.speed*(0.8+Math.random()*0.8);}this.geo.setAttribute('position',new T.BufferAttribute(this.pos,3));const mat=new T.PointsMaterial({map:tex,size:d.sizePx,sizeAttenuation:false,transparent:true,opacity:d.opacity,alphaTest:0.01,depthTest:false,depthWrite:false});this.points=new T.Points(this.geo,mat);this.points.frustumCulled=false;this.points.renderOrder=998;this.el.object3D.add(this.points);},tick(){const d=this.data,A=d.area,YT=d.yTop,YB=d.yBot,p=this.pos,N=p.length/3;for(let i=0;i<N;i++){p[3*i+1]-=this.vy[i];if(p[3*i+1]<YB){p[3*i+1]=YT+Math.random()*0.2;p[3*i]=(Math.random()-0.5)*A*2.2;p[3*i+2]=(Math.random()-0.5)*A*2.2;}}this.geo.attributes.position.needsUpdate=true;}});
+  </script>
+
+  <!-- ===== LLUVIA v2 + SALPICADURAS + NIEBLA v2 (todo en GPU, independiente de los FPS) ===== -->
+  <script>
+  (function(){
+    // Viento compartido: inclinación del celular -> inclinación de la lluvia y deriva de la niebla
+    const WIND={x:0,z:0,tx:0,tz:0,on:false};
+    function listenTilt(){
+      if(WIND.on) return; WIND.on=true;
+      window.addEventListener('deviceorientation',e=>{
+        if(e.gamma==null) return;
+        WIND.tx=Math.max(-1,Math.min(1,e.gamma/45));            // izquierda/derecha
+        WIND.tz=Math.max(-1,Math.min(1,((e.beta||45)-45)/60));  // adelante/atrás
+      },{passive:true});
+    }
+    async function askTilt(){
+      try{
+        if(typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function'){
+          const r=await DeviceOrientationEvent.requestPermission(); if(r!=='granted') return;
+        }
+        listenTilt();
+      }catch(e){}
+    }
+    window.addEventListener('pointerdown',askTilt,{once:true,passive:true});
+    askTilt();
+    window.__lluviaWind=WIND;
+
+    function stepWind(dt){ const k=1-Math.exp(-dt*1.5); WIND.x+=(WIND.tx-WIND.x)*k; WIND.z+=(WIND.tz-WIND.z)*k; }
+
+    // ---------- LLUVIA: estelas finas, varias capas de profundidad ----------
+    AFRAME.registerComponent('lluvia-v2',{
+      schema:{
+        count:{default:2600}, area:{default:2.4}, depth:{default:1.2}, yTop:{default:1.8}, yBot:{default:-1.6},
+        speed:{default:3.0},  len:{default:0.2}, width:{default:0.010},
+        slant:{default:0.18}, tiltWind:{default:0.55},
+        color:{default:HZC("#E4ECF3")}, opacity:{default:0.75}
+      },
+      init(){
+        const T=AFRAME.THREE,d=this.data,N=d.count;
+        const quad=new T.InstancedBufferGeometry();
+        quad.setAttribute('position',new T.Float32BufferAttribute([-0.5,0,0, 0.5,0,0, 0.5,1,0, -0.5,1,0],3));
+        quad.setIndex([0,1,2, 0,2,3]);
+        const seed=new Float32Array(N*4);
+        for(let i=0;i<N;i++){
+          const depth=Math.random();                       // 0 = cerca, 1 = lejos
+          seed[i*4]=Math.random(); seed[i*4+1]=Math.random();
+          seed[i*4+2]=Math.random();                       // fase
+          seed[i*4+3]=depth;
+        }
+        quad.setAttribute('aSeed',new T.InstancedBufferAttribute(seed,4));
+        quad.instanceCount=N;
+        this.u={
+          uTime:{value:0}, uArea:{value:d.area}, uDepth:{value:d.depth}, uTop:{value:d.yTop}, uBot:{value:d.yBot},
+          uSpeed:{value:d.speed}, uLen:{value:d.len}, uWidth:{value:d.width},
+          uWind:{value:new T.Vector2(d.slant,0)}, uColor:{value:new T.Color(d.color)}, uOpacity:{value:d.opacity},
+          uBeam:{value:new T.Vector2(-0.3,0.3)}, uBeamK:{value:0}
+        };
+        const vert=`
+          attribute vec4 aSeed;
+          uniform float uTime,uArea,uDepth,uTop,uBot,uSpeed,uLen,uWidth,uBeamK; uniform vec2 uWind,uBeam;
+          varying vec2 vQ; varying float vA;
+          float h(float n){ return fract(sin(n)*43758.5453); }
+          void main(){
+            float H=uTop-uBot;
+            float depth=aSeed.w;
+            float sp=uSpeed*mix(1.15,0.7,depth);            // las lejanas caen más lento (paralaje)
+            float travel=uTime*sp+aSeed.z*H;
+            float cyc=floor(travel/H);
+            float fall=travel-cyc*H;
+            float id=aSeed.x*917.0+aSeed.y*131.0;
+            vec2 xz=vec2((h(id+cyc*7.13)*2.0-1.0)*uArea, 0.02+h(id+cyc*3.71)*uDepth);   // z: entre la página y la cámara
+            vec3 dir=normalize(vec3(uWind.x,-1.0,0.0));
+            vec3 head=vec3(xz.x,uTop,xz.y)+dir*fall;
+            float L=uLen*mix(1.2,0.6,depth);
+            vec3 tail=head-dir*L;
+            vec4 vh=modelViewMatrix*vec4(head,1.0);
+            vec4 vt=modelViewMatrix*vec4(tail,1.0);
+            vec2 d2=vt.xy-vh.xy; float dl=length(d2); d2=dl>1e-6?d2/dl:vec2(0.0,1.0);
+            vec2 nrm=vec2(-d2.y,d2.x);
+            vec4 p=mix(vh,vt,position.y);
+            float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));   // escala del target (MindAR usa unidades grandes)
+            p.xy+=nrm*position.x*uWidth*sc*mix(1.3,0.7,depth);
+            gl_Position=projectionMatrix*p;
+            vQ=vec2(position.x*2.0,position.y);
+            float edge=smoothstep(0.0,0.08,fall/H)*(1.0-smoothstep(0.96,1.0,fall/H));   // nace y muere suave
+            vA=edge*mix(1.0,0.45,depth);
+            float bd=length(head.xy-uBeam); vA*=1.0+uBeamK*1.6*exp(-bd*bd/0.06);       // gotas iluminadas por el haz
+          }`;
+        const frag=`
+          precision mediump float;
+          uniform vec3 uColor; uniform float uOpacity;
+          varying vec2 vQ; varying float vA;
+          void main(){
+            float across=1.0-abs(vQ.x); across*=across;
+            float along=pow(1.0-vQ.y,1.6);                 // cabeza brillante, cola que se desvanece
+            float a=across*along*vA*uOpacity;
+            if(a<0.003) discard;
+            gl_FragColor=vec4(uColor,a);
+          }`;
+        const mat=new T.ShaderMaterial({uniforms:this.u,vertexShader:vert,fragmentShader:frag,transparent:true,depthWrite:false,depthTest:true,side:T.DoubleSide});
+        this.mesh=new T.Mesh(quad,mat); this.mesh.frustumCulled=false; this.mesh.renderOrder=997;
+        this.el.object3D.add(this.mesh);
+      },
+      tick(t,dt){
+        dt=Math.min(0.05,(dt||16)/1000);
+        stepWind(dt);
+        const d=this.data,u=this.u;
+        u.uTime.value+=dt;
+        u.uWind.value.set(d.slant+WIND.x*d.tiltWind, 0);
+      },
+      remove(){ this.el.object3D.remove(this.mesh); this.mesh.geometry.dispose(); this.mesh.material.dispose(); }
+    });
+
+    // ---------- SALPICADURAS: anillos que se abren donde golpea el agua ----------
+    AFRAME.registerComponent('salpicaduras',{
+      schema:{
+        count:{default:70}, areaX:{default:0.5}, areaY:{default:0.7}, z:{default:0.004},
+        period:{default:0.9}, radius:{default:0.06},
+        color:{default:HZC('#E6EEF5')}, opacity:{default:0.7}
+      },
+      init(){
+        const T=AFRAME.THREE,d=this.data,N=d.count;
+        const g=new T.InstancedBufferGeometry();
+        g.setAttribute('position',new T.Float32BufferAttribute([-1,-1,0, 1,-1,0, 1,1,0, -1,1,0],3));
+        g.setIndex([0,1,2, 0,2,3]);
+        const seed=new Float32Array(N*3);
+        for(let i=0;i<N;i++){ seed[i*3]=Math.random(); seed[i*3+1]=Math.random(); seed[i*3+2]=0.6+Math.random()*0.8; }
+        g.setAttribute('aSeed',new T.InstancedBufferAttribute(seed,3));
+        g.instanceCount=N;
+        this.u={uTime:{value:0},uArea:{value:new T.Vector2(d.areaX,d.areaY)},uZ:{value:d.z},uPeriod:{value:d.period},uR:{value:d.radius},uColor:{value:new T.Color(d.color)},uOpacity:{value:d.opacity}};
+        const vert=`
+          attribute vec3 aSeed;
+          uniform float uTime,uZ,uPeriod,uR; uniform vec2 uArea;
+          varying vec2 vUv; varying float vT;
+          float h(float n){ return fract(sin(n)*43758.5453); }
+          void main(){
+            float per=uPeriod*aSeed.z;
+            float k=uTime/per+aSeed.x*7.0;
+            float cyc=floor(k); float t=k-cyc;
+            float id=aSeed.x*311.0+aSeed.y*977.0;
+            vec2 c=(vec2(h(id+cyc*1.7),h(id+cyc*5.3))*2.0-1.0)*uArea;
+            float r=uR*aSeed.z;
+            vec3 p=vec3(c.x+position.x*r, c.y+position.y*r, uZ);
+            gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);
+            vUv=position.xy; vT=t;
+          }`;
+        const frag=`
+          precision mediump float;
+          uniform vec3 uColor; uniform float uOpacity;
+          varying vec2 vUv; varying float vT;
+          void main(){
+            float d=length(vUv);
+            float t=vT;
+            float r1=t; float r2=max(0.0,t-0.25)*1.2;
+            float w=0.06+0.08*t;
+            float ring=exp(-pow((d-r1)/w,2.0))+0.55*exp(-pow((d-r2)/w,2.0));
+            float splash=exp(-d*d*60.0)*(1.0-smoothstep(0.0,0.12,t));    // destello del impacto
+            float a=(ring*pow(1.0-t,1.8)+splash)*uOpacity*step(d,1.0);
+            if(a<0.003) discard;
+            gl_FragColor=vec4(uColor,a);
+          }`;
+        const mat=new T.ShaderMaterial({uniforms:this.u,vertexShader:vert,fragmentShader:frag,transparent:true,depthWrite:false,depthTest:true,side:T.DoubleSide});
+        this.mesh=new T.Mesh(g,mat); this.mesh.frustumCulled=false; this.mesh.renderOrder=996;
+        this.el.object3D.add(this.mesh);
+      },
+      tick(t,dt){ this.u.uTime.value+=Math.min(0.05,(dt||16)/1000); },
+      remove(){ this.el.object3D.remove(this.mesh); this.mesh.geometry.dispose(); this.mesh.material.dispose(); }
+    });
+
+    // ---------- NIEBLA v2: bancos de bruma que derivan, giran y respiran ----------
+    AFRAME.registerComponent('niebla-v2',{
+      schema:{
+        count:{default:46}, area:{default:1.6}, yMin:{default:-0.9}, yMax:{default:0.9}, zMax:{default:0.45},
+        size:{default:1.3}, drift:{default:0.06}, tiltWind:{default:0.12},
+        color:{default:HZC('#EEE9E0')}, opacity:{default:0.16}
+      },
+      init(){
+        const T=AFRAME.THREE,d=this.data,N=d.count;
+        // textura de bruma: muchas manchas suaves superpuestas = borde irregular, no un círculo
+        const S=256,c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
+        for(let i=0;i<70;i++){
+          const a=Math.random()*Math.PI*2, rr=Math.random()*S*0.26;
+          const cx=S/2+Math.cos(a)*rr, cy=S/2+Math.sin(a)*rr, r=S*(0.08+Math.random()*0.18);
+          const gr=x.createRadialGradient(cx,cy,0,cx,cy,r);
+          gr.addColorStop(0,'rgba(255,255,255,0.22)'); gr.addColorStop(1,'rgba(255,255,255,0)');
+          x.fillStyle=gr; x.fillRect(0,0,S,S);
+        }
+        const tex=new T.CanvasTexture(c); tex.needsUpdate=true;
+        const g=new T.InstancedBufferGeometry();
+        g.setAttribute('position',new T.Float32BufferAttribute([-0.5,-0.5,0, 0.5,-0.5,0, 0.5,0.5,0, -0.5,0.5,0],3));
+        g.setIndex([0,1,2, 0,2,3]);
+        const s1=new Float32Array(N*4), s2=new Float32Array(N*4);
+        for(let i=0;i<N;i++){
+          s1[i*4]=(Math.random()*2-1)*d.area; s1[i*4+1]=d.yMin+Math.random()*(d.yMax-d.yMin); s1[i*4+2]=Math.random()*d.zMax;
+          s1[i*4+3]=d.size*(0.55+Math.random()*0.9);
+          s2[i*4]=Math.random()*6.283; s2[i*4+1]=(Math.random()*2-1)*0.12;   // ángulo y giro
+          s2[i*4+2]=Math.random()*6.283; s2[i*4+3]=0.6+Math.random()*0.8;      // fase y ritmo de respiración
+        }
+        g.setAttribute('aA',new T.InstancedBufferAttribute(s1,4));
+        g.setAttribute('aB',new T.InstancedBufferAttribute(s2,4));
+        g.instanceCount=N;
+        this.u={uTime:{value:0},uArea:{value:d.area},uOff:{value:0},uMap:{value:tex},uColor:{value:new T.Color(d.color)},uOpacity:{value:d.opacity}};
+        const vert=`
+          attribute vec4 aA; attribute vec4 aB;
+          uniform float uTime,uArea,uOff;
+          varying vec2 vUv; varying float vA;
+          void main(){
+            float x=mod(aA.x+uOff+uArea,2.0*uArea)-uArea;     // deriva lateral, vuelve a entrar por el otro lado
+            vec3 center=vec3(x,aA.y+0.04*sin(uTime*0.3+aB.z),aA.z);
+            vec4 mv=modelViewMatrix*vec4(center,1.0);
+            float ang=aB.x+aB.y*uTime;
+            vec2 q=position.xy; q=vec2(q.x*cos(ang)-q.y*sin(ang), q.x*sin(ang)+q.y*cos(ang));
+            float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
+            mv.xy+=q*aA.w*sc;
+            gl_Position=projectionMatrix*mv;
+            vUv=position.xy+0.5;
+            float edge=1.0-smoothstep(0.65,1.0,abs(x)/uArea);   // se desvanece en los bordes del área
+            vA=edge*(0.55+0.45*sin(uTime*0.35*aB.w+aB.z));
+          }`;
+        const frag=`
+          precision mediump float;
+          uniform sampler2D uMap; uniform vec3 uColor; uniform float uOpacity;
+          varying vec2 vUv; varying float vA;
+          void main(){
+            float a=texture2D(uMap,vUv).a*vA*uOpacity;
+            if(a<0.004) discard;
+            gl_FragColor=vec4(uColor,a);
+          }`;
+        const mat=new T.ShaderMaterial({uniforms:this.u,vertexShader:vert,fragmentShader:frag,transparent:true,depthWrite:false,depthTest:true});
+        this.mesh=new T.Mesh(g,mat); this.mesh.frustumCulled=false; this.mesh.renderOrder=995;
+        this.el.object3D.add(this.mesh);
+      },
+      tick(t,dt){
+        dt=Math.min(0.05,(dt||16)/1000);
+        const d=this.data,u=this.u;
+        u.uTime.value+=dt;
+        u.uOff.value+=(d.drift+WIND.x*d.tiltWind)*dt;
+      },
+      remove(){ this.el.object3D.remove(this.mesh); this.mesh.geometry.dispose(); this.mesh.material.dispose(); }
+    });
+  })();
+  </script>
+
+  <!-- BRILLO-MALLA: brillo propio, halo de borde y aura sobre una malla elegida por nombre -->
+  <script>
+  AFRAME.registerComponent('brillo-malla',{
+    multiple:true,
+    schema:{
+      mesh:{default:'Infinity_loop'},
+      color:{default:HZC('#FFB45A')},      // tono del brillo
+      intensity:{default:0.55},        // brillo propio del metal
+      metalness:{default:0.35},
+      halo:{default:1.3},             // fuerza del halo
+      haloSize:{default:0.06},
+      aura:{default:0.55},            // resplandor difuso detrás (0 = sin aura)       // grosor del halo (relativo al tamaño del infinito)
+      pulse:{default:0.25},           // cuánto late (0 = fijo)
+      period:{default:3.2},           // segundos por latido
+      useMap:{default:true},          // el brillo toma la textura del metal
+      opaque:{default:false}          // fuerza opacidad total (para la pirámide)
+    },
+    init(){
+      this.t=0; this.halos=[]; this.mats=[];
+      const apply=()=>{
+        const T=AFRAME.THREE,d=this.data,root=this.el.getObject3D('mesh'); if(!root) return;
+        const targets=[];
+        root.traverse(o=>{
+          if(!o.isMesh) return;
+          const norm=v=>(v||'').toLowerCase().replace(/[^a-z0-9]/g,''); let n=o, hit=false; while(n){ if(d.mesh==='*'||norm(n.name)===norm(d.mesh)){hit=true;break;} n=n.parent; }
+          if(hit) targets.push(o);
+        });
+        targets.forEach(o=>{
+          const m=o.material.clone();
+          m.emissive=new T.Color(d.color);
+          if(m.map && d.useMap) m.emissiveMap=m.map;
+          if(d.opaque){ m.transparent=false; m.opacity=1; m.depthWrite=true; }
+          if(!d.useMap){ m.map=null; m.color=new T.Color(d.color).multiplyScalar(0.35); }   // tono puro, sin la textura del metal
+          m.emissiveIntensity=d.intensity;
+          m.metalness=d.metalness; m.roughness=Math.min(m.roughness,0.45);
+          m.needsUpdate=true; o.material=m; this.mats.push(m);
+          // halo: cáscara exterior con brillo de borde (fresnel), suma luz
+          o.geometry.computeBoundingSphere();
+          const r=o.geometry.boundingSphere.radius;
+          const u={uColor:{value:new T.Color(d.color)},uStr:{value:d.halo},uGrow:{value:d.haloSize*r}};
+          const sm=new T.ShaderMaterial({
+            uniforms:u, transparent:true, depthWrite:false, blending:T.AdditiveBlending, side:T.FrontSide,
+            vertexShader:`uniform float uGrow; varying vec3 vN; varying vec3 vV;
+              void main(){ vec3 p=position+normal*uGrow; vec4 mv=modelViewMatrix*vec4(p,1.0);
+                vN=normalize(normalMatrix*normal); vV=normalize(-mv.xyz); gl_Position=projectionMatrix*mv; }`,
+            fragmentShader:`uniform vec3 uColor; uniform float uStr; varying vec3 vN; varying vec3 vV;
+              void main(){ float f=1.0-abs(dot(normalize(vN),normalize(vV))); f=pow(f,2.2);
+                gl_FragColor=vec4(uColor*f*uStr, f*uStr); }`
+          });
+          const h=new T.Mesh(o.geometry,sm); h.renderOrder=20; o.add(h); this.halos.push(u);
+          // aura: resplandor difuso centrado en el infinito
+          if(d.aura>0){
+            const S=128,c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
+            const gr=x.createRadialGradient(S/2,S/2,0,S/2,S/2,S/2);
+            gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(0.35,'rgba(255,255,255,0.35)'); gr.addColorStop(1,'rgba(255,255,255,0)');
+            x.fillStyle=gr; x.fillRect(0,0,S,S);
+            const am=new T.SpriteMaterial({map:new T.CanvasTexture(c),color:new T.Color(d.color),transparent:true,depthWrite:false,blending:T.AdditiveBlending,opacity:d.aura});
+            const sp=new T.Sprite(am); sp.position.copy(o.geometry.boundingSphere.center); sp.scale.setScalar(r*2.6); sp.renderOrder=19;
+            o.add(sp); this.auras=this.auras||[]; this.auras.push(am);
+          }
+        });
+      };
+      if(this.el.getObject3D('mesh')) apply(); else this.el.addEventListener('model-loaded',apply,{once:true});
+    },
+    tick(t,dt){
+      if(!this.mats.length) return;
+      const d=this.data; this.t+=Math.min(0.05,(dt||16)/1000);
+      const k=1+d.pulse*Math.sin(this.t*2*Math.PI/d.period);
+      this.mats.forEach(m=>m.emissiveIntensity=d.intensity*k);
+      this.halos.forEach(u=>u.uStr.value=d.halo*k);
+      (this.auras||[]).forEach(a=>a.opacity=d.aura*k);
+    }
+  });
+  </script>
+
+  <!-- GÉNESIS: los puntos forman el modelo, aparece el modelo y luego crece la hélice -->
+  <script>
+  AFRAME.registerComponent('genesis',{
+    schema:{
+      color:{default:HZC('#F2C46A')},
+      size:{default:0.016},        // tamaño de cada punto
+      gather:{default:4.5},        // segundos que tardan en formar el cerebro
+      modelIn:{default:1.6},       // segundos de aparición del modelo
+      dnaDelay:{default:0.6},      // pausa antes de que crezca el ADN
+      dnaGrow:{default:3.5},       // segundos que tarda en crecer la hélice
+      dnaBend:{default:3.0}        // segundos en que la hélice se curva hasta cerrarse como aureola
+    },
+    init(){
+      const T=AFRAME.THREE,d=this.data;
+      this.model=this.el.querySelector('a-gltf-model');
+      this.dna=this.el.querySelector('[dna-helix]');
+      this.t=0; this.running=false; this.mats=null; this.modelT=null;
+      // --- nube de puntos a partir de los datos precalculados ---
+      hzForma(this.model,6000,tgt=>{ const N=tgt.length/3;
+      const c=new T.Vector3(); for(let i=0;i<N;i++){ c.x+=tgt[i*3]; c.y+=tgt[i*3+1]; c.z+=tgt[i*3+2]; } c.multiplyScalar(1/N);
+      let R=0; for(let i=0;i<N;i++) R=Math.max(R,Math.hypot(tgt[i*3]-c.x,tgt[i*3+1]-c.y,tgt[i*3+2]-c.z));
+      const src=new Float32Array(N*3), tim=new Float32Array(N*2), rnd=new Float32Array(N);
+      for(let i=0;i<N;i++){
+        const u=Math.random()*2-1, a=Math.random()*Math.PI*2, rr=R*(1.6+Math.random()*1.8), s=Math.sqrt(1-u*u);
+        src.set([c.x+rr*s*Math.cos(a), c.y+rr*u, c.z+rr*s*Math.sin(a)],i*3);
+        const dist=Math.hypot(tgt[i*3]-c.x,tgt[i*3+1]-c.y,tgt[i*3+2]-c.z)/R;   // de adentro hacia afuera
+        tim.set([(0.15+0.55*dist+0.3*Math.random())*d.gather*0.55, d.gather*0.45*(0.7+0.6*Math.random())],i*2);
+        rnd[i]=Math.random();
+      }
+      const g=new T.BufferGeometry();
+      g.setAttribute('position',new T.BufferAttribute(tgt,3));
+      g.setAttribute('aSrc',new T.BufferAttribute(src,3));
+      g.setAttribute('aTime',new T.BufferAttribute(tim,2));
+      g.setAttribute('aRnd',new T.BufferAttribute(rnd,1));
+      const S=64,cv=document.createElement('canvas'); cv.width=cv.height=S; const x=cv.getContext('2d');
+      const gr=x.createRadialGradient(S/2,S/2,0,S/2,S/2,S/2); gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(0.35,'rgba(255,255,255,0.5)'); gr.addColorStop(1,'rgba(255,255,255,0)');
+      x.fillStyle=gr; x.fillRect(0,0,S,S);
+      this.u={uTime:{value:0},uAlpha:{value:1},uSize:{value:d.size},uViewH:{value:800},uColor:{value:new T.Color(d.color)},uMap:{value:new T.CanvasTexture(cv)},uSwirl:{value:R*0.6}};
+      const mat=new T.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:false,blending:T.AdditiveBlending,
+        vertexShader:`attribute vec3 aSrc; attribute vec2 aTime; attribute float aRnd;
+          uniform float uTime,uSize,uViewH,uSwirl; varying float vA;
+          void main(){
+            float k=clamp((uTime-aTime.x)/aTime.y,0.0,1.0);
+            float e=k*k*(3.0-2.0*k);
+            vec3 p=mix(aSrc,position,e);
+            vec3 side=cross(position-aSrc,vec3(0.0,1.0,0.0)); float sl=length(side); side=sl>1e-5?side/sl:vec3(1.0,0.0,0.0);
+            p+=side*sin(3.14159*e)*uSwirl*(aRnd-0.5);
+            p+=vec3(sin(uTime*1.3+aRnd*40.0),cos(uTime*1.1+aRnd*30.0),sin(uTime*0.9+aRnd*20.0))*0.004*e;
+            vec4 mv=modelViewMatrix*vec4(p,1.0);
+            float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
+            gl_PointSize=clamp(uSize*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.5,64.0)*(0.6+0.8*aRnd);
+            gl_Position=projectionMatrix*mv;
+            vA=clamp((uTime-aTime.x)/0.4,0.0,1.0)*(0.55+0.45*e);
+          }`,
+        fragmentShader:`precision mediump float; uniform sampler2D uMap; uniform vec3 uColor; uniform float uAlpha; varying float vA;
+          void main(){ float a=texture2D(uMap,gl_PointCoord).a*vA*uAlpha; if(a<0.004) discard; gl_FragColor=vec4(uColor*a,a); }`});
+      this.pts=new T.Points(g,mat); this.pts.frustumCulled=false; this.pts.renderOrder=40; this.pts.visible=false;
+      this.model.object3D.add(this.pts);
+      if(this._pend){ this._pend=false; this.start(); } });
+      // --- el modelo real: se prepara para aparecer con fundido cuando termine de descargar ---
+      const prep=()=>{ const root=this.model.getObject3D('mesh'); if(!root) return;
+        this.mats=[]; root.traverse(o=>{ if(o.isMesh){ o.material=o.material.clone(); this.mats.push(o.material); } });
+        if(!this.running) this.setModelOpacity(0); };
+      if(this.model.getObject3D('mesh')) prep(); else this.model.addEventListener('model-loaded',prep,{once:true});
+      this.el.addEventListener('targetFound',()=>this.start());
+      // una pérdida breve del target (luz, reflejo, movimiento) no reinicia la secuencia: solo si se pierde más de 2 s
+      this.el.addEventListener('targetLost',()=>{ clearTimeout(this._lostT); this._lostT=setTimeout(()=>this.reset(),2000); });
+      this.setDna(0);
+    },
+    setModelOpacity(a){
+      if(!this.mats) return;
+      this.mats.forEach(m=>{ m.transparent=a<0.999; m.opacity=a; m.depthWrite=a>0.6; });
+      const root=this.model.getObject3D('mesh'); if(root) root.visible=a>0.001;
+    },
+    setDna(r,m){ const c=this.dna&&this.dna.components['dna-helix']; if(c){ c.reveal=r; if(m!==undefined) c.morph=m; } },
+    start(){
+      clearTimeout(this._lostT);
+      if(this.running) return;            // volvió tras una pérdida breve: sigue donde estaba
+      if(!this.pts){ this._pend=true; return; }   // la forma todavía se está calculando
+      this.t=0; this.running=true; this.modelT=null;
+      this.u.uTime.value=0; this.u.uAlpha.value=1; this.pts.visible=true;
+      this.setModelOpacity(0); this.setDna(0,0);
+    },
+    reset(){ this.running=false; this._pend=false; if(this.pts) this.pts.visible=false; this.setModelOpacity(0); this.setDna(0); },
+    tick(t,dt){
+      // seguro: si MindAR ya está mostrando el target (aviso perdido), arrancar igual
+      if(!this.running){ if(this.el.components['mindar-image-target'] && this.el.object3D.visible) this.start(); if(!this.running) return; }
+      const d=this.data; this.t+=Math.min(0.05,(dt||16)/1000); const s=this.t;
+      this.u.uTime.value=s;
+      const r=this.el.sceneEl.renderer; if(r) this.u.uViewH.value=r.getContext().drawingBufferHeight;
+      const sm=x=>{ x=Math.min(1,Math.max(0,x)); return x*x*(3-2*x); };
+      const m0=d.gather*0.85;
+      // el modelo aparece cuando la forma está lista Y el archivo terminó de bajar
+      if(this.mats && this.modelT===null && s>=m0) this.modelT=s;
+      if(this.modelT!==null){
+        const k=sm((s-this.modelT)/d.modelIn);
+        this.setModelOpacity(k);
+        this.u.uAlpha.value=1-0.85*sm((s-this.modelT-d.modelIn)/1.5);   // los puntos se disuelven y queda un polvo leve
+      }
+      const g0=m0+d.modelIn+d.dnaDelay;
+      this.setDna(sm((s-g0)/d.dnaGrow), sm((s-g0-d.dnaGrow-0.3)/d.dnaBend));   // el ADN sube desde abajo y después se curva en aureola
+    }
+  });
+  </script>
+
+  <!-- PALABRA → FORMA: las partículas escriben un texto y luego forman el modelo -->
+  <script>
+  AFRAME.registerComponent('palabra-forma',{
+    schema:{
+      text:{default:'[Hz]'},
+      font:{default:'700 150px Georgia, "Times New Roman", serif'},
+      textWidth:{default:0.8},      // ancho del nombre (1 = ancho de la página)
+      textY:{default:0.05}, textZ:{default:0.06},
+      palette:{default:HZC('#9d783f,#852420,#80a0b9,#161b30,#320a3f,#CFA15D')},   // paleta original de la palabra, en franjas de izquierda a derecha
+      color:{default:HZC('#CFA15D')}, size:{default:0.016},
+      rise:{default:2.8},           // segundos que tardan en escribir el nombre
+      hold:{default:1.6},           // segundos que el nombre queda quieto
+      morph:{default:2.6},          // segundos de la transformación nombre → el modelo
+      modelIn:{default:1.6},
+      pulse:{default:0.35},         // intensidad del pulso dorado sobre la página (0 = sin pulso)
+      bustHold:{default:8},         // segundos que el modelo permanece antes de volver a ser nombre
+      bustOut:{default:1.6}         // segundos en que el busto se disuelve
+    },
+    init(){
+      const T=AFRAME.THREE,d=this.data;
+      this.model=this.el.querySelector('a-gltf-model');
+      this.t=0; this.running=false; this.mats=null; this.modelT=null;
+      // --- 1) puntos del nombre: se dibuja el texto en un canvas y se muestrean sus píxeles ---
+      const H=220, mc=document.createElement('canvas').getContext('2d'); mc.font=d.font; const W=Math.min(1400,Math.max(320,Math.ceil(mc.measureText(d.text).width/0.96)+8)), cv=document.createElement('canvas'); cv.width=W; cv.height=H; const x=cv.getContext('2d');   // el lienzo se ajusta al largo del texto
+      x.font=d.font; x.textAlign='center'; x.textBaseline='middle'; x.fillStyle='#fff';
+      let fs=150; while(x.measureText(d.text).width>W*0.96 && fs>40){ fs-=6; x.font=d.font.replace(/\d+px/,fs+'px'); }
+      x.fillText(d.text,W/2,H/2);
+      const img=x.getImageData(0,0,W,H).data, cand=[];
+      for(let yy=0;yy<H;yy+=2) for(let xx=0;xx<W;xx+=2) if(img[(yy*W+xx)*4+3]>140) cand.push([xx,yy]);
+      // --- 2) puntos del modelo (en el espacio de la página, según la posición del modelo) ---
+      hzForma(this.model,3600,P=>{ const N=P.length/3;
+      const mp=this.model.getAttribute('position')||{x:0,y:0,z:0}, ms=this.model.getAttribute('scale')||{x:1,y:1,z:1};
+      const M=new T.Matrix4().compose(new T.Vector3(mp.x,mp.y,mp.z),new T.Quaternion(),new T.Vector3(ms.x,ms.y,ms.z)), v=new T.Vector3();
+      const forma=[]; for(let i=0;i<N;i++){ v.set(P[i*3],P[i*3+1],P[i*3+2]).applyMatrix4(M); forma.push([v.x,v.y,v.z]); }
+      const sc=Math.min(d.textWidth/W,0.38/H), text=[];   // un texto corto no queda diminuto ni gigante
+      for(let i=0;i<N;i++){ const c=cand[(Math.random()*cand.length)|0]; text.push([(c[0]-W/2)*sc,(H/2-c[1])*sc+d.textY,d.textZ]); }
+      // emparejar de izquierda a derecha: cada parte del nombre fluye hacia la parte del modelo que le queda enfrente
+      text.sort((a,b)=>a[0]-b[0]); forma.sort((a,b)=>a[0]-b[0]);
+      const aS=new Float32Array(N*3), aTx=new Float32Array(N*3), aC=new Float32Array(N*3), aT=new Float32Array(N*2), aR=new Float32Array(N), aCol=new Float32Array(N*3);
+      const pal=d.palette.split(',').map(h=>new T.Color(h.trim())), half=d.textWidth/2;
+      for(let i=0;i<N;i++){
+        aS.set([(Math.random()-0.5)*1.0,(Math.random()-0.5)*1.3,0.005],i*3);          // nacen sobre la página
+        aTx.set(text[i],i*3); aC.set(forma[i],i*3);
+        const band=Math.max(0,Math.min(pal.length-1,Math.floor((text[i][0]+half)/d.textWidth*pal.length))); aCol.set([pal[band].r,pal[band].g,pal[band].b],i*3);
+        aT.set([Math.random()*d.rise*0.45, Math.random()*d.morph*0.4],i*2); aR[i]=Math.random();
+      }
+      const g=new T.BufferGeometry();
+      g.setAttribute('position',new T.BufferAttribute(aC,3));
+      g.setAttribute('aStart',new T.BufferAttribute(aS,3)); g.setAttribute('aText',new T.BufferAttribute(aTx,3));
+      g.setAttribute('aT',new T.BufferAttribute(aT,2)); g.setAttribute('aRnd',new T.BufferAttribute(aR,1)); g.setAttribute('aCol',new T.BufferAttribute(aCol,3));
+      const S=64,c2=document.createElement('canvas'); c2.width=c2.height=S; const y=c2.getContext('2d');
+      const gr=y.createRadialGradient(S/2,S/2,0,S/2,S/2,S/2); gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(0.35,'rgba(255,255,255,0.5)'); gr.addColorStop(1,'rgba(255,255,255,0)');
+      y.fillStyle=gr; y.fillRect(0,0,S,S);
+      this.u={uTime:{value:0},uAlpha:{value:1},uSize:{value:d.size},uViewH:{value:800},uColor:{value:new T.Color(d.color)},uMap:{value:new T.CanvasTexture(c2)},
+        uRise:{value:d.rise*0.55},uMorphAt:{value:d.rise+d.hold},uMorph:{value:d.morph*0.6},uBackAt:{value:1e6}};
+      const mat=new T.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:false,blending:T.NormalBlending,
+        vertexShader:`attribute vec3 aStart; attribute vec3 aText; attribute vec2 aT; attribute float aRnd; attribute vec3 aCol;
+          uniform float uTime,uSize,uViewH,uRise,uMorphAt,uMorph,uBackAt; varying float vA; varying vec3 vCol;
+          float sm(float x){ x=clamp(x,0.0,1.0); return x*x*(3.0-2.0*x); }
+          void main(){
+            float e1=sm((uTime-aT.x)/uRise);
+            vec3 p=mix(aStart,aText,e1); p.z+=sin(3.14159*e1)*0.18*(0.5+aRnd);              // suben desde la página
+            p+=vec3(sin(uTime*2.1+aRnd*50.0),cos(uTime*1.7+aRnd*40.0),0.0)*0.002*e1;        // vibración leve del nombre
+            float e2=sm((uTime-uMorphAt-aT.y)/uMorph)*(1.0-sm((uTime-uBackAt-aT.y)/uMorph));   // ida al busto y vuelta al nombre
+            vec3 mid=mix(aText,position,0.5)+vec3(0.0,0.0,0.12+0.1*aRnd);
+            vec3 q=mix(mix(aText,mid,e2),mix(mid,position,e2),e2);                             // curva suave nombre → figura
+            p=mix(p,q,step(0.0001,e2));
+            vec4 mv=modelViewMatrix*vec4(p,1.0);
+            float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
+            gl_PointSize=clamp(uSize*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.5,48.0)*(0.6+0.8*aRnd);
+            gl_Position=projectionMatrix*mv;
+            vA=clamp((uTime-aT.x)/0.3,0.0,1.0)*(0.5+0.5*e1); vCol=aCol;
+          }`,
+        fragmentShader:`precision mediump float; uniform sampler2D uMap; uniform float uAlpha; varying float vA; varying vec3 vCol;
+          void main(){ float m=texture2D(uMap,gl_PointCoord).a; float a=smoothstep(0.25,0.6,m)*vA*uAlpha; if(a<0.01) discard; gl_FragColor=vec4(vCol,a); }`});
+      this.pts=new T.Points(g,mat); this.pts.frustumCulled=false; this.pts.renderOrder=40; this.pts.visible=false;
+      this.el.object3D.add(this.pts);
+      if(this._pend){ this._pend=false; this.start(); } });
+      // --- 3) pulso dorado sobre la página, con el ritmo del latido original (dos golpes cada 1,6 s) ---
+      this.pu={uTime:{value:0},uStr:{value:0},uColor:{value:new T.Color(d.color)}};
+      const pm=new T.ShaderMaterial({uniforms:this.pu,transparent:true,depthWrite:false,blending:T.AdditiveBlending,
+        vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+        fragmentShader:`precision mediump float; uniform float uTime,uStr; uniform vec3 uColor; varying vec2 vUv;
+          float ring(float r,float t){ float R=t*0.75; return exp(-pow((r-R)/0.025,2.0))*(1.0-t); }
+          void main(){ float r=length(vUv-0.5)*2.0; float ph=mod(uTime,1.6)/1.6;
+            float a=ring(r,clamp(ph/0.55,0.0,1.0))+0.8*ring(r,clamp((ph-0.11)/0.55,0.0,1.0));
+            a*=uStr*smoothstep(1.0,0.7,r); if(a<0.003) discard; gl_FragColor=vec4(uColor*a,a); }`});
+      this.ring=new T.Mesh(new T.PlaneGeometry(1.6,1.6),pm); this.ring.position.z=0.003; this.ring.renderOrder=35; this.ring.visible=false;
+      this.el.object3D.add(this.ring);
+      // --- 4) el modelo del modelo: aparece con fundido cuando termina la transformación ---
+      const prep=()=>{ const root=this.model.getObject3D('mesh'); if(!root) return;
+        this.mats=[]; root.traverse(o=>{ if(o.isMesh){ const m=o.material.clone();
+          // escultura de oro, como el modelo: metal que refleja un estudio en penumbra (volumen) sin la textura azul original
+          // la textura original, pasada a grises, devuelve los rasgos (ojos, pómulos, pelo) sin el azul
+          if(m.map && m.map.image){ try{ const im=m.map.image, cv=document.createElement('canvas'); cv.width=im.width; cv.height=im.height; const x=cv.getContext('2d'); x.drawImage(im,0,0);
+            const id=x.getImageData(0,0,cv.width,cv.height), a=id.data; for(let i=0;i<a.length;i+=4){ const L=0.3*a[i]+0.59*a[i+1]+0.11*a[i+2], v=Math.min(255,60+L*1.05); a[i]=a[i+1]=a[i+2]=v; }
+            x.putImageData(id,0,0); const gt=new AFRAME.THREE.CanvasTexture(cv); gt.flipY=m.map.flipY; gt.colorSpace=AFRAME.THREE.SRGBColorSpace; m.map=gt; }catch(e){ m.map=null; } }
+          m.color=new AFRAME.THREE.Color(HZC('#CC8536')); m.metalness=1.0; m.roughness=0.3; m.envMap=this.goldEnv(); m.envMapIntensity=2.1;
+          m.emissive=new AFRAME.THREE.Color(0,0,0); m.emissiveIntensity=0; m.needsUpdate=true; o.material=m; this.mats.push(m); } });
+        if(this.modelT===null) this.setModelOpacity(0); };
+      if(this.model.getObject3D('mesh')) prep(); else this.model.addEventListener('model-loaded',prep,{once:true});
+      this.el.addEventListener('targetFound',()=>this.start());
+      this.el.addEventListener('targetLost',()=>{ clearTimeout(this._lostT); this._lostT=setTimeout(()=>this.reset(),2000); });
+    },
+    goldEnv(){
+      if(this._env) return this._env;
+      const T=AFRAME.THREE, r=this.el.sceneEl.renderer, W=512,Hh=256, cv=document.createElement('canvas'); cv.width=W; cv.height=Hh; const x=cv.getContext('2d');
+      const bg=x.createLinearGradient(0,0,0,Hh); bg.addColorStop(0,HZC('#3a2810')); bg.addColorStop(0.5,HZC('#1e1308')); bg.addColorStop(1,HZC('#080403')); x.fillStyle=bg; x.fillRect(0,0,W,Hh);
+      const box=(u,v,w,h,col,blur)=>{ x.save(); x.filter='blur('+blur+'px)'; x.fillStyle=col; x.fillRect(u*W-w*W/2,v*Hh-h*Hh/2,w*W,h*Hh); x.restore(); };
+      box(0.12,0.30,0.07,0.50,HZC('#FFF4DC'),6); box(0.37,0.25,0.07,0.40,HZC('#FFE2A8'),6); box(0.62,0.35,0.09,0.55,HZC('#FFF0D0'),7); box(0.87,0.28,0.06,0.45,HZC('#FFD890'),6);
+      box(0.50,0.06,0.70,0.08,HZC('#FFEFD0'),8); box(0.25,0.78,0.20,0.06,HZC('#7A5020'),10);
+      const tex=new T.CanvasTexture(cv); tex.mapping=T.EquirectangularReflectionMapping; tex.colorSpace=T.SRGBColorSpace;
+      try{ const pm=new T.PMREMGenerator(r); this._env=pm.fromEquirectangular(tex).texture; pm.dispose(); }catch(e){ this._env=tex; }
+      return this._env;
+    },
+    setModelOpacity(a){
+      if(!this.mats) return;
+      this.mats.forEach(m=>{ m.transparent=a<0.999; m.opacity=a; m.depthWrite=a>0.6; });
+      const root=this.model.getObject3D('mesh'); if(root) root.visible=a>0.001;
+    },
+    start(){
+      clearTimeout(this._lostT); if(this.running) return;
+      if(!this.pts){ this._pend=true; return; }
+      this.t=0; this.running=true; this.modelT=null; this.morphAt=this.data.rise+this.data.hold; this.backAt=null; this.outAt=null;
+      this.u.uMorphAt.value=this.morphAt; this.u.uBackAt.value=1e6;
+      this.u.uTime.value=0; this.u.uAlpha.value=1; this.pts.visible=true; this.ring.visible=true;
+      this.setModelOpacity(0); this.model.object3D.rotation.y=0;
+    },
+    reset(){ this.running=false; this._pend=false; if(this.pts) this.pts.visible=false; this.ring.visible=false; this.modelT=null; this.setModelOpacity(0); },
+    tick(t,dt){
+      if(!this.running){ if(this.el.components['mindar-image-target'] && this.el.object3D.visible) this.start(); if(!this.running) return; }
+      const d=this.data, step=Math.min(0.05,(dt||16)/1000); this.t+=step; const s=this.t;
+      this.u.uTime.value=s; this.pu.uTime.value=s;
+      const r=this.el.sceneEl.renderer; if(r) this.u.uViewH.value=r.getContext().drawingBufferHeight;
+      const sm=x=>{ x=Math.min(1,Math.max(0,x)); return x*x*(3-2*x); };
+      this.pu.uStr.value=d.pulse*sm(s/1.5);
+      // ciclo: nombre → el modelo → permanece → se disuelve y vuelve a ser nombre → otra vez el modelo
+      const formed=this.morphAt+d.morph*0.85;
+      if(this.mats && this.modelT===null && this.backAt===null && s>=formed){ this.modelT=s; this.outAt=s+d.modelIn+d.bustHold; }
+      if(this.modelT!==null){
+        const kin=sm((s-this.modelT)/d.modelIn), kout=sm((s-this.outAt)/d.bustOut);
+        this.setModelOpacity(kin*(1-kout));
+        const dust=1-0.9*sm((s-this.modelT-d.modelIn*0.6)/1.5);                          // el polvo dorado se disuelve...
+        this.u.uAlpha.value=Math.max(dust, sm((s-this.outAt+0.4)/1.0));                   // ...y vuelve cuando el busto se va
+        if(kin>=1 && kout<=0) this.model.object3D.rotation.y=Math.sin((s-this.modelT-d.modelIn)*0.5)*0.35;   // el modelo gira suave, como respirando
+        if(this.backAt===null && s>=this.outAt+d.bustOut*0.6){ this.backAt=s; this.u.uBackAt.value=s; }   // los puntos vuelven a escribir el nombre
+      }
+      if(this.backAt!==null && s>=this.backAt+d.morph*0.6*1.4+0.2){                        // el nombre está otra vez completo
+        this.modelT=null; this.backAt=null; this.setModelOpacity(0); this.model.object3D.rotation.y=0;
+        this.morphAt=s+d.hold; this.u.uMorphAt.value=this.morphAt; this.u.uBackAt.value=1e6;
+      }
+    }
+  });
+  </script>
+
+  <!-- CONSTRUYE-ARISTAS: la malla se dibuja con luz desde la base al vértice y luego la recorre un pulso -->
+  <script>
+  AFRAME.registerComponent('construye-aristas',{
+    schema:{
+      mesh:{default:'PIRAMIDE ABAJO.002'},
+      color:{default:HZC('#FFD58A')},     // color del trazo de luz
+      spark:{default:0.32},          // tamaño de las chispas que construyen las aristas (relativo a la pirámide)
+      build:{default:3.2},           // segundos que tarda en construirse
+      pulseEvery:{default:4.5},      // cada cuántos segundos la recorre un pulso
+      pulseDur:{default:1.4}         // duración del recorrido del pulso
+    },
+    init(){
+      this.ready=false; this.running=false; this.t=0;
+      this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]');
+      const T=AFRAME.THREE;
+      this.U={uReveal:{value:0},uFront:{value:0},uPulse:{value:-1},uPulseStr:{value:0},uYb:{value:0},uYa:{value:1},uBuildColor:{value:new T.Color(this.data.color)}};
+      const go=()=>setTimeout(()=>this.apply(),0);   // después de que 'brillo-malla' prepare los materiales
+      if(this.el.getObject3D('mesh')) go(); else this.el.addEventListener('model-loaded',go,{once:true});
+      if(this.anchor){
+        this.anchor.addEventListener('targetFound',()=>this.start());
+        this.anchor.addEventListener('targetLost',()=>{ clearTimeout(this._lostT); this._lostT=setTimeout(()=>this.reset(),2000); });
+      }
+    },
+    apply(){
+      const T=AFRAME.THREE,d=this.data,root=this.el.getObject3D('mesh'); if(!root) return;
+      const norm=v=>(v||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+      let target=hzMalla(root,d.mesh);
+      if(!target) return;
+      // la base es el extremo más ancho de la pirámide; el vértice, el más angosto
+      const pa=target.geometry.attributes.position; let y0=1e9,y1=-1e9; for(let i=0;i<pa.count;i++){ const y=pa.getY(i); y0=Math.min(y0,y); y1=Math.max(y1,y); }
+      const H=y1-y0; let r0=0,r1=0; for(let i=0;i<pa.count;i++){ const y=pa.getY(i), r=Math.hypot(pa.getX(i),pa.getZ(i)); if(y<y0+H*0.1) r0=Math.max(r0,r); if(y>y1-H*0.1) r1=Math.max(r1,r); }
+      this.U.uYb.value=r0>=r1?y0:y1; this.U.uYa.value=r0>=r1?y1:y0;
+      // esquinas de la base y del vértice (una por cuadrante): por ahí viajan las chispas
+      const yb=this.U.uYb.value, ya=this.U.uYa.value, near=(y,yr)=>Math.abs(y-yr)<H*0.12;
+      const corner=(yr)=>[[1,1],[1,-1],[-1,1],[-1,-1]].map(([sx,sz])=>{ let best=null,br=-1;
+        for(let i=0;i<pa.count;i++){ const x=pa.getX(i),y=pa.getY(i),z=pa.getZ(i); if(!near(y,yr)||Math.sign(x)!==sx||Math.sign(z)!==sz) continue; const r=Math.hypot(x,z); if(r>br){br=r;best=new T.Vector3(x,y,z);} }
+        return best; });
+      this.cb=corner(yb); this.ca=corner(ya);
+      const S=128,cv=document.createElement('canvas'); cv.width=cv.height=S; const cx=cv.getContext('2d');
+      const gr=cx.createRadialGradient(S/2,S/2,0,S/2,S/2,S/2); gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(0.12,'rgba(255,255,255,0.9)'); gr.addColorStop(0.4,'rgba(255,255,255,0.25)'); gr.addColorStop(1,'rgba(255,255,255,0)');
+      cx.fillStyle=gr; cx.fillRect(0,0,S,S);
+      this.sparkMat=new T.SpriteMaterial({map:new T.CanvasTexture(cv),color:new T.Color(d.color),transparent:true,depthWrite:false,depthTest:false,blending:T.AdditiveBlending,opacity:0});
+      this.sparks=[]; for(let i=0;i<4;i++){ if(!this.cb[i]||!this.ca[i]) continue; const sp=new T.Sprite(this.sparkMat); sp.scale.setScalar(H*d.spark); sp.renderOrder=60; sp.userData.i=i; target.add(sp); this.sparks.push(sp); }
+      const U=this.U;
+      const GLSL_U='uniform float uReveal,uFront,uPulse,uPulseStr,uYb,uYa; uniform vec3 uBuildColor; varying float vBY;\n';
+      const GLSL_H='float hn=(vBY-uYb)/(uYa-uYb);\n if(hn>uReveal+0.002) discard;\n float bf=exp(-pow((hn-uReveal)/0.04,2.0))*uFront; float bp=exp(-pow((hn-uPulse)/0.06,2.0))*uPulseStr;\n';
+      // material de la pirámide (el que dejó 'brillo-malla')
+      const m=target.material;
+      m.onBeforeCompile=sh=>{
+        Object.assign(sh.uniforms,U);
+        sh.vertexShader='varying float vBY;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vBY=position.y;');
+        sh.fragmentShader=GLSL_U+sh.fragmentShader.replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\n'+GLSL_H+' totalEmissiveRadiance+=uBuildColor*(bf*6.0+bp*3.0);');
+      };
+      m.customProgramCacheKey=()=>'construye-aristas'; m.needsUpdate=true;
+      // halo de 'brillo-malla' sobre la pirámide: también se recorta y brilla con el trazo
+      target.children.forEach(h=>{
+        if(!(h.isMesh && h.material && h.material.isShaderMaterial)) return;
+        const hm=h.material; Object.assign(hm.uniforms,U);
+        hm.vertexShader='varying float vBY;\n'+hm.vertexShader.replace('void main(){','void main(){ vBY=position.y;');
+        hm.fragmentShader=GLSL_U+hm.fragmentShader.replace(/gl_FragColor=vec4\(uColor\*f\*uStr, f\*uStr\);/, GLSL_H+' float g=f*uStr+bf*2.0+bp*1.2; gl_FragColor=vec4(uColor*f*uStr+uBuildColor*(bf*2.0+bp*1.2), g);');
+        hm.needsUpdate=true;
+      });
+      this.ready=true;
+      if(!this.anchor) this.start();   // sin MindAR (vista previa): arranca solo
+    },
+    start(){ clearTimeout(this._lostT); if(this.running) return; this.running=true; this.t=0; },
+    reset(){ this.running=false; this.t=0; const U=this.U; U.uReveal.value=0; U.uFront.value=0; U.uPulseStr.value=0; if(this.sparkMat) this.sparkMat.opacity=0; },
+    tick(t,dt){
+      if(!this.ready) return;
+      if(!this.running){ if(this.anchor && this.anchor.object3D.visible && this.anchor.components['mindar-image-target']) this.start(); else return; }
+      const d=this.data,U=this.U; this.t+=Math.min(0.05,(dt||16)/1000); const s=this.t;
+      const k=Math.min(1,s/d.build), e=1-Math.pow(1-k,3);
+      U.uReveal.value=k>=1?1.01:e;
+      U.uFront.value=k<1?1:Math.max(0,1-(s-d.build)/0.6);                // el frente de luz se apaga al terminar
+      const after=s-d.build-0.8;
+      if(after>0){ const ph=after%d.pulseEvery; const q=ph/d.pulseDur;
+        if(q<=1){ U.uPulse.value=-0.1+q*1.2; U.uPulseStr.value=Math.sin(Math.PI*q); } else U.uPulseStr.value=0; }
+      else U.uPulseStr.value=0;
+      // chispas: avanzan por cada arista en el frente de construcción y, luego, acompañan el pulso
+      if(this.sparks&&this.sparks.length){
+        let pos=null, op=0;
+        if(k<1){ pos=e; op=1; }
+        else if(U.uPulseStr.value>0){ pos=Math.min(1,Math.max(0,U.uPulse.value)); op=U.uPulseStr.value*0.7; }
+        else op=Math.max(0,1-(s-d.build)/0.6);
+        if(pos===null) pos=1;
+        const fl=0.85+0.15*Math.sin(s*23.0);                                 // titileo leve, como una llama
+        this.sparkMat.opacity=op*fl;
+        this.sparks.forEach(sp=>{ const i=sp.userData.i; sp.position.lerpVectors(this.cb[i],this.ca[i],pos); });
+      }
+    }
+  });
+  </script>
+
+  <!-- RED-RESPLANDOR: la luz dibuja la red en ondas circulares desde el centro; los nodos se encienden y luego la recorren pulsos -->
+  <script>
+  AFRAME.registerComponent('red-resplandor',{
+    schema:{
+      mesh:{default:'Sphere'},
+      gold:{default:HZC('#D49A2A')},      // oro de las líneas
+      color:{default:HZC('#FFD58A')},     // color del brillo (halo y resplandor)
+      hot:{default:''},              // color del frente de luz, nodos y pulsos (vacío = mismo que color)
+      intensity:{default:0.5},
+      halo:{default:0.8},
+      build:{default:3.5},           // segundos que tarda la luz en dibujar la red
+      pulseEvery:{default:4.5},
+      pulseDur:{default:2.0},
+      nodes:{default:0.026},         // tamaño de los nodos de luz (relativo a la red)
+      aura:{default:0.6},            // resplandor difuso en el centro
+      cross:{default:'Kreuz'},       // nodo de la cruz que recibe la luz dorada ('' = sin luz en la cruz)
+      crossColor:{default:HZC('#FFB347')},
+      crossRim:{default:0.9},        // brillo de borde (glow) sobre la cruz
+      crossBase:{default:0.05},      // calidez general de la cruz
+      crossAura:{default:0.5},       // resplandor detrás de la cruz
+      crossIn:{default:1.6}          // segundos en que se enciende la cruz
+    },
+    init(){
+      this.ready=false; this.running=false; this.t=0;
+      this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]');
+      const T=AFRAME.THREE;
+      this.U={uReveal:{value:0},uFront:{value:0},uPulse:{value:-1},uPulseStr:{value:0},uC:{value:new T.Vector3()},uR:{value:1},uBuildColor:{value:new T.Color(this.data.hot||this.data.color)}};
+      const go=()=>this.apply();
+      if(this.el.getObject3D('mesh')) go(); else this.el.addEventListener('model-loaded',go,{once:true});
+      if(this.anchor){
+        this.anchor.addEventListener('targetFound',()=>this.start());
+        this.anchor.addEventListener('targetLost',()=>{ clearTimeout(this._lostT); this._lostT=setTimeout(()=>this.reset(),2000); });
+      }
+    },
+    apply(){
+      const T=AFRAME.THREE,d=this.data,root=this.el.getObject3D('mesh'); if(!root) return;
+      const norm=v=>(v||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+      let target=hzMalla(root,d.mesh);
+      if(!target) return;
+      const g=target.geometry, pa=g.attributes.position;
+      g.computeBoundingBox(); const C=g.boundingBox.getCenter(new T.Vector3());
+      let R=0; for(let i=0;i<pa.count;i++){ R=Math.max(R,Math.hypot(pa.getX(i)-C.x,pa.getY(i)-C.y,pa.getZ(i)-C.z)); }
+      this.U.uC.value.copy(C); this.U.uR.value=R;
+      const U=this.U;
+      // líneas en oro: tono puro con brillo propio
+      const m=target.material.clone();
+      m.map=null; m.emissiveMap=null; m.color=new T.Color(d.gold).multiplyScalar(0.35); m.emissive=new T.Color(d.gold); m.emissiveIntensity=d.intensity;
+      m.metalness=0.2; m.roughness=0.4;
+      const GLSL_U='uniform float uReveal,uFront,uPulse,uPulseStr,uR; uniform vec3 uC,uBuildColor; varying vec3 vLP;\n';
+      const GLSL_H='float rn=length(vLP-uC)/uR;\n if(rn>uReveal+0.002) discard;\n float bf=exp(-pow((rn-uReveal)/0.05,2.0))*uFront; float bp=exp(-pow((rn-uPulse)/0.08,2.0))*uPulseStr;\n';
+      m.onBeforeCompile=sh=>{
+        Object.assign(sh.uniforms,U);
+        sh.vertexShader='varying vec3 vLP;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vLP=position;');
+        sh.fragmentShader=GLSL_U+sh.fragmentShader.replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\n'+GLSL_H+' totalEmissiveRadiance+=uBuildColor*(bf*1.6+bp*0.9);');
+      };
+      m.customProgramCacheKey=()=>'red-resplandor'; m.needsUpdate=true; target.material=m; this.mat=m;
+      // halo: cáscara aditiva alrededor de cada línea
+      this.hu=Object.assign({uColor:{value:new T.Color(d.color)},uStr:{value:d.halo},uGrow:{value:R*0.006}},U);
+      const LUZ={blending:T.CustomBlending,blendEquation:T.AddEquation,blendSrc:T.OneFactor,blendDst:T.OneFactor,blendSrcAlpha:T.ZeroFactor,blendDstAlpha:T.OneFactor};   // solo suma luz, nunca tapa la cámara
+      const hm=new T.ShaderMaterial(Object.assign({uniforms:this.hu,transparent:true,depthWrite:false,side:T.DoubleSide,
+        vertexShader:`uniform float uGrow; varying vec3 vN; varying vec3 vV; varying vec3 vLP;
+          void main(){ vLP=position; vec3 p=position+normal*uGrow; vec4 mv=modelViewMatrix*vec4(p,1.0);
+            vN=normalize(normalMatrix*normal); vV=normalize(-mv.xyz); gl_Position=projectionMatrix*mv; }`,
+        fragmentShader:GLSL_U+`uniform vec3 uColor; uniform float uStr; varying vec3 vN; varying vec3 vV;
+          void main(){ `+GLSL_H+` float f=1.0-abs(dot(normalize(vN),normalize(vV))); f=0.35+0.65*pow(f,1.5);
+            float a=min(1.0,f*uStr*0.5+bf*0.8+bp*0.45); gl_FragColor=vec4((uColor*f*uStr*0.5+uBuildColor*(bf*0.8+bp*0.45))*a, 0.0); }`},LUZ));
+      const h=new T.Mesh(g,hm); h.renderOrder=20; target.add(h);
+      // nodos: la red trae una esferita en cada cruce; su centro es donde se enciende un punto de luz
+      const ix=g.index?g.index.array:null, top=[];
+      if(ix){ const par=new Int32Array(pa.count); for(let i=0;i<pa.count;i++) par[i]=i;
+        const f=x=>{ while(par[x]!==x){ par[x]=par[par[x]]; x=par[x]; } return x; };
+        for(let t=0;t<ix.length;t+=3){ const a=f(ix[t]),b=f(ix[t+1]),c=f(ix[t+2]); par[a]=b; par[f(c)]=f(b); }
+        const cm=new Map(); for(let i=0;i<pa.count;i++){ const r=f(i); let e=cm.get(r); if(!e){ e={n:0,x:0,y:0,z:0,x0:1e9,x1:-1e9,y0:1e9,y1:-1e9,z0:1e9,z1:-1e9}; cm.set(r,e); }
+          const x=pa.getX(i),y=pa.getY(i),z=pa.getZ(i); e.n++; e.x+=x; e.y+=y; e.z+=z; e.x0=Math.min(e.x0,x); e.x1=Math.max(e.x1,x); e.y0=Math.min(e.y0,y); e.y1=Math.max(e.y1,y); e.z0=Math.min(e.z0,z); e.z1=Math.max(e.z1,z); }
+        cm.forEach(e=>{ const ext=Math.max(e.x1-e.x0,e.y1-e.y0,e.z1-e.z0), bal=Math.min(e.x1-e.x0,e.y1-e.y0,e.z1-e.z0); if(ext<R*0.05 && bal>ext*0.6) top.push(e); });
+      }
+      const P=new Float32Array(top.length*3), Rn=new Float32Array(top.length), Rd=new Float32Array(top.length);
+      top.forEach((e,i)=>{ P[i*3]=e.x/e.n; P[i*3+1]=e.y/e.n; P[i*3+2]=e.z/e.n; Rn[i]=Math.random(); Rd[i]=Math.hypot(P[i*3]-C.x,P[i*3+1]-C.y,P[i*3+2]-C.z)/R; });
+      this.nodeCount=top.length;
+      const S=64,cv=document.createElement('canvas'); cv.width=cv.height=S; const cx=cv.getContext('2d');
+      const gr=cx.createRadialGradient(S/2,S/2,0,S/2,S/2,S/2); gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(0.15,'rgba(255,255,255,0.85)'); gr.addColorStop(0.45,'rgba(255,255,255,0.2)'); gr.addColorStop(1,'rgba(255,255,255,0)');
+      cx.fillStyle=gr; cx.fillRect(0,0,S,S);
+      const pg=new T.BufferGeometry(); pg.setAttribute('position',new T.BufferAttribute(P,3)); pg.setAttribute('aRnd',new T.BufferAttribute(Rn,1)); pg.setAttribute('aRd',new T.BufferAttribute(Rd,1));
+      this.pu=Object.assign({uMap:{value:new T.CanvasTexture(cv)},uSize:{value:d.nodes*R},uViewH:{value:800},uTime:{value:0}},U);
+      const pm=new T.ShaderMaterial(Object.assign({uniforms:this.pu,transparent:true,depthWrite:false,depthTest:false,
+        vertexShader:`attribute float aRnd,aRd; uniform float uSize,uViewH,uTime,uReveal,uFront,uPulse,uPulseStr; varying float vA;
+          void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0);
+            float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
+            float on=smoothstep(aRd-0.02,aRd+0.04,uReveal);
+            float flash=exp(-pow((aRd-uReveal)/0.06,2.0))*uFront+exp(-pow((aRd-uPulse)/0.08,2.0))*uPulseStr;
+            float tw=0.75+0.25*sin(uTime*(1.5+aRnd*2.0)+aRnd*40.0);
+            vA=on*(0.55*tw+flash*1.2);
+            gl_PointSize=clamp(uSize*(0.8+0.5*aRnd+flash*0.9)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,48.0);
+            gl_Position=projectionMatrix*mv; }`,
+        fragmentShader:`precision mediump float; uniform sampler2D uMap; uniform vec3 uBuildColor; varying float vA;
+          void main(){ float a=texture2D(uMap,gl_PointCoord).a*vA; if(a<0.004) discard; gl_FragColor=vec4(uBuildColor*a*min(a,1.0),0.0); }`},LUZ));
+      const pts=new T.Points(pg,pm); pts.frustumCulled=false; pts.renderOrder=45; target.add(pts);
+      // aura: resplandor circular en el corazón de la red
+      if(d.aura>0){
+        const S2=128,c2=document.createElement('canvas'); c2.width=c2.height=S2; const x2=c2.getContext('2d');
+        const g2=x2.createRadialGradient(S2/2,S2/2,0,S2/2,S2/2,S2/2); g2.addColorStop(0,'rgba(255,255,255,1)'); g2.addColorStop(0.3,'rgba(255,255,255,0.35)'); g2.addColorStop(1,'rgba(255,255,255,0)');
+        x2.fillStyle=g2; x2.fillRect(0,0,S2,S2);
+        this.auraMat=new T.SpriteMaterial({map:new T.CanvasTexture(c2),color:new T.Color(d.color),transparent:true,depthWrite:false,blending:T.CustomBlending,blendEquation:T.AddEquation,blendSrc:T.SrcAlphaFactor,blendDst:T.OneFactor,blendSrcAlpha:T.ZeroFactor,blendDstAlpha:T.OneFactor,opacity:0});
+        const sp=new T.Sprite(this.auraMat); sp.position.copy(C); sp.scale.setScalar(R*1.2); sp.renderOrder=19; target.add(sp);
+      }
+      // luz dorada sobre la cruz: brillo de borde en su propio material (sin geometría extra) y un resplandor detrás
+      this.CU={uCLit:{value:0},uCCol:{value:new T.Color(d.crossColor)},uCRim:{value:d.crossRim},uCBase:{value:d.crossBase}};
+      let croot=null; if(d.cross){ root.traverse(o=>{ if(!croot && norm(o.name).indexOf(norm(d.cross))===0) croot=o; }); }
+      if(croot){
+        const done=new Map(), CU=this.CU, box=new T.Box3(), tmp=new T.Box3();
+        croot.traverse(o=>{
+          if(!o.isMesh) return;
+          o.geometry.computeBoundingBox(); tmp.copy(o.geometry.boundingBox).applyMatrix4(o.matrix); box.union(tmp);
+          let cm=done.get(o.material);
+          if(!cm){ cm=o.material.clone();
+            cm.onBeforeCompile=sh=>{ Object.assign(sh.uniforms,CU);
+              sh.fragmentShader='uniform float uCLit,uCRim,uCBase; uniform vec3 uCCol;\n'+sh.fragmentShader.replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\n float cfr=pow(1.0-abs(dot(normalize(normal),normalize(vViewPosition))),3.0);\n totalEmissiveRadiance+=uCCol*(uCBase+cfr*uCRim)*uCLit;'); };
+            cm.customProgramCacheKey=()=>'cruz-dorada'; cm.needsUpdate=true; done.set(o.material,cm); }
+          o.material=cm;
+        });
+        if(d.crossAura>0 && !box.isEmpty()){
+          const S3=128,c3=document.createElement('canvas'); c3.width=c3.height=S3; const x3=c3.getContext('2d');
+          const g3=x3.createRadialGradient(S3/2,S3/2,0,S3/2,S3/2,S3/2); g3.addColorStop(0,'rgba(255,255,255,0.9)'); g3.addColorStop(0.35,'rgba(255,255,255,0.3)'); g3.addColorStop(1,'rgba(255,255,255,0)');
+          x3.fillStyle=g3; x3.fillRect(0,0,S3,S3);
+          this.crossAuraMat=new T.SpriteMaterial({map:new T.CanvasTexture(c3),color:new T.Color(d.crossColor),transparent:true,depthWrite:false,blending:T.CustomBlending,blendEquation:T.AddEquation,blendSrc:T.SrcAlphaFactor,blendDst:T.OneFactor,blendSrcAlpha:T.ZeroFactor,blendDstAlpha:T.OneFactor,opacity:0});
+          const cs=new T.Sprite(this.crossAuraMat), sz=box.getSize(new T.Vector3()), cc=box.getCenter(new T.Vector3());
+          cs.position.set(cc.x,box.min.y+sz.y*0.72,cc.z); cs.scale.setScalar(Math.max(sz.x,sz.y)*0.85); cs.renderOrder=18; croot.add(cs);
+        }
+      }
+      this.ready=true;
+      if(!this.anchor) this.start();   // sin MindAR (vista previa): arranca solo
+    },
+    start(){ clearTimeout(this._lostT); if(this.running) return; this.running=true; this.t=0; },
+    reset(){ this.running=false; this.t=0; const U=this.U; U.uReveal.value=0; U.uFront.value=0; U.uPulseStr.value=0; if(this.auraMat) this.auraMat.opacity=0; if(this.CU) this.CU.uCLit.value=0; if(this.crossAuraMat) this.crossAuraMat.opacity=0; },
+    tick(t,dt){
+      if(!this.ready) return;
+      if(!this.running){ if(this.anchor && this.anchor.object3D.visible && this.anchor.components['mindar-image-target']) this.start(); else return; }
+      const d=this.data,U=this.U; this.t+=Math.min(0.05,(dt||16)/1000); const s=this.t;
+      const k=Math.min(1,s/d.build), e=1-Math.pow(1-k,3);
+      U.uReveal.value=k>=1?1.01:e;
+      U.uFront.value=k<1?1:Math.max(0,1-(s-d.build)/0.6);
+      const after=s-d.build-0.6;
+      if(after>0){ const q=(after%d.pulseEvery)/d.pulseDur;
+        if(q<=1){ U.uPulse.value=-0.1+q*1.2; U.uPulseStr.value=Math.sin(Math.PI*q); } else U.uPulseStr.value=0; }
+      else U.uPulseStr.value=0;
+      this.pu.uTime.value=s;
+      const r=this.el.sceneEl.renderer; if(r) this.pu.uViewH.value=r.domElement.height;
+      if(this.CU){ const ci=Math.min(1,s/d.crossIn), ce=ci*ci*(3-2*ci), br=0.88+0.12*Math.sin(s*2*Math.PI/5.0);
+        this.CU.uCLit.value=ce*(br+U.uPulseStr.value*0.35);
+        if(this.crossAuraMat) this.crossAuraMat.opacity=d.crossAura*ce*(br+U.uPulseStr.value*0.4); }
+      if(this.auraMat){ const b=Math.min(1,s/1.2); this.auraMat.opacity=d.aura*b*(0.75+0.25*Math.sin(s*2*Math.PI/4.5)+U.uPulseStr.value*0.5+U.uFront.value*0.4*(k<1?1-k:0)); }
+    }
+  });
+  </script>
+
+  <!-- MARCO-LUZ (todos los targets): la luz recorre el trazo del marco de cada imagen -->
+  <script>
+  // máscaras del marco de cada trigger: HZ_DATOS.marcos[n] = [trazo nítido 1024px, brillo (G cercano, B resplandor)] (las genera preparar.html)
+  AFRAME.registerComponent('marco-luz',{
+    schema:{
+      src:{default:0},                // número de trigger
+      color:{default:HZC('#FFC46A')},      // luz dorada
+      hot:{default:HZC('#FFF1C8')},        // frente de luz
+      strength:{default:1.0},
+      build:{default:2.4},            // segundos que tarda la luz en entrar desde el borde
+      sweep:{default:11},             // segundos de una vuelta de la luz alrededor del marco
+      w:{default:1}, h:{default:1}    // tamaño de la imagen en el ancla
+    },
+    init(){
+      const T=AFRAME.THREE,d=this.data; this.t=0; this.running=false;
+      this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
+      const L=new T.TextureLoader(), an=(this.el.sceneEl.renderer&&this.el.sceneEl.renderer.capabilities.getMaxAnisotropy())||4;
+      const V=window.HZ_DATOS.marcos[d.src]; if(!V){ this.off=true; return; }   // sin marco generado para este trigger: no dibuja nada
+      const tex=L.load(V[0]); tex.minFilter=T.LinearMipmapLinearFilter; tex.magFilter=T.LinearFilter; tex.anisotropy=an;
+      const glo=L.load(V[1]); glo.minFilter=T.LinearMipmapLinearFilter;
+      this.u={uMask:{value:tex},uGlow:{value:glo},uT:{value:0},uB:{value:0},uDone:{value:0},uFade:{value:0},uStr:{value:d.strength},uSweep:{value:d.sweep},uColor:{value:new T.Color(d.color)},uHot:{value:new T.Color(d.hot)}};
+      const mat=new T.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:false,
+        // suma solo luz: no escribe opacidad en el lienzo, así la cámara de fondo nunca queda tapada
+        blending:T.CustomBlending,blendEquation:T.AddEquation,blendSrc:T.OneFactor,blendDst:T.OneFactor,blendSrcAlpha:T.ZeroFactor,blendDstAlpha:T.OneFactor,
+        vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+        fragmentShader:`precision mediump float; uniform sampler2D uMask,uGlow; uniform float uT,uB,uDone,uFade,uStr,uSweep; uniform vec3 uColor,uHot; varying vec2 vUv;
+          void main(){ vec3 m=vec3(texture2D(uMask,vUv).r, texture2D(uGlow,vUv).gb); if(m.r+m.b<0.004) discard;
+            vec2 c=vUv-0.5; float dd=0.5-max(abs(c.x),abs(c.y));
+            float fr=uB*0.56; float lit=smoothstep(fr,fr-0.05,dd); float band=exp(-pow((dd-fr)/0.035,2.0))*(1.0-uDone);
+            float a=atan(c.y,c.x); float sw=pow(0.5+0.5*cos(a-uT*6.2832/uSweep),5.0);
+            float br=0.82+0.18*sin(uT*6.2832/5.0);
+            vec3 col=uColor*(m.r*0.5+m.g*0.3+m.b*0.22)*lit*br*(0.55+0.9*sw)+uHot*(m.r*1.1+m.g*0.5)*band;
+            gl_FragColor=vec4(col*uStr*uFade,0.0); }`});
+      this.mesh=new T.Mesh(new T.PlaneGeometry(d.w,d.h),mat); this.mesh.position.z=0.002; this.mesh.renderOrder=2;
+      this.el.setObject3D('vitral',this.mesh);
+      if(this.anchor!==this.el||this.anchor.components['mindar-image-target']){
+        this.anchor.addEventListener('targetFound',()=>this.start());
+        this.anchor.addEventListener('targetLost',()=>{ clearTimeout(this._lostT); this._lostT=setTimeout(()=>this.reset(),2000); });
+      }
+    },
+    start(){ if(this.off) return; clearTimeout(this._lostT); if(this.running) return; this.running=true; this.t=0; },
+    reset(){ if(this.off) return; this.running=false; this.t=0; this.u.uFade.value=0; this.u.uB.value=0; },
+    tick(t,dt){
+      if(this.off) return;
+      if(!this.running){ if(this.anchor.object3D.visible && (this.anchor.components['mindar-image-target']||this.anchor===this.el)) this.start(); else return; }
+      const d=this.data,u=this.u; this.t+=Math.min(0.05,(dt||16)/1000); const s=this.t;
+      const k=Math.min(1,s/d.build); u.uB.value=k<1?1-Math.pow(1-k,2):1.2; u.uDone.value=Math.min(1,Math.max(0,(s-d.build)/0.6));
+      u.uFade.value=Math.min(1,s/0.4); u.uT.value=s;
+    }
+  });
+  </script>
+
+  <!-- CONDENSACIÓN: un foco de luz → la materia se condensa en el modelo → rayos, polvo que sube y balanceo lento -->
+  <script>
+  AFRAME.registerComponent('condensacion',{
+    schema:{
+      host:{type:'vec3',default:{x:-0.002,y:0.647,z:0.003}},   // foco de luz, en el espacio del modelo
+      hostAuto:{default:true},            // true: el foco se ubica solo (centro del modelo, al 65% de su altura)
+      vidrio:{default:''},                // parte del nombre de la malla que se trata como vidrio iluminado ('' = ninguna)
+      metal:{default:'*'},                // parte del nombre de la malla que se vuelve metal ('*' = todas las demás)
+      respaldo:{default:''},              // GLB alternativo si el principal no carga
+      gold:{default:HZC('#E8B860')},
+      light:{default:HZC('#FFE9C2')},          // luz del foco (blanco cálido)
+      size:{default:0.012},               // tamaño de los puntos de oro
+      seed:{default:0.9},                 // segundos del punto de luz antes de que salga el oro
+      gather:{default:3.4},               // segundos que tarda el oro en formar el modelo
+      modelIn:{default:1.6},
+      raysIn:{default:2.0},
+      raysR:{default:0.42},               // radio de los rayos (1 = ancho de la página)
+      sway:{default:11},                  // grados del balanceo
+      swayPeriod:{default:14},            // segundos por balanceo completo
+      incense:{default:220}               // partículas de polvo
+    },
+    init(){
+      const T=AFRAME.THREE,d=this.data;
+      this.model=this.el.querySelector('a-gltf-model');
+      this.t=0; this.running=false; this.mats=null; this.modelT=null;
+      // si el modelo falla: se confirma si realmente falta en el servidor; si está, se reintenta; si no, se usa el respaldo
+      this.model.addEventListener('model-error',()=>{
+        if(this._fb) return; this._fb=true; const CUR=this.model.getAttribute('src'), URL=hzClave(CUR)===CUR?CUR:(document.querySelector(CUR)||{getAttribute:()=>CUR}).getAttribute('src');
+        fetch(URL,{method:'HEAD',cache:'no-store'}).then(r=>{ if(r.ok) this.model.setAttribute('src',URL); else if(this.data.respaldo) this.model.setAttribute('src',this.data.respaldo); })
+          .catch(()=>{ if(this.data.respaldo) this.model.setAttribute('src',this.data.respaldo); });
+      });
+      const S=128,cv=document.createElement('canvas'); cv.width=cv.height=S; const cx=cv.getContext('2d');
+      const gr=cx.createRadialGradient(S/2,S/2,0,S/2,S/2,S/2); gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(0.15,'rgba(255,255,255,0.85)'); gr.addColorStop(0.45,'rgba(255,255,255,0.2)'); gr.addColorStop(1,'rgba(255,255,255,0)');
+      cx.fillStyle=gr; cx.fillRect(0,0,S,S); const glowTex=new T.CanvasTexture(cv);
+      const H=new T.Vector3(d.host.x,d.host.y,d.host.z);
+      // ---- 1) el oro: nace en el foco y se condensa en la forma de el modelo ----
+      hzForma(this.model,5000,tgt=>{ const N=tgt.length/3;
+      if(d.hostAuto){ const bb=new T.Box3(); for(let i=0;i<N;i++) bb.expandByPoint(new T.Vector3(tgt[i*3],tgt[i*3+1],tgt[i*3+2]));
+        const cc=bb.getCenter(new T.Vector3()); H.set(cc.x,bb.min.y+(bb.max.y-bb.min.y)*0.65,cc.z); }
+      this.H=H; this._foco();
+      let R=0; for(let i=0;i<N;i++) R=Math.max(R,Math.hypot(tgt[i*3]-H.x,tgt[i*3+1]-H.y,tgt[i*3+2]-H.z));
+      const src=new Float32Array(N*3), tim=new Float32Array(N*2), rnd=new Float32Array(N);
+      for(let i=0;i<N;i++){
+        const a=Math.random()*Math.PI*2, u=Math.random()*2-1, s=Math.sqrt(1-u*u), rr=0.01+Math.random()*0.03;
+        src.set([H.x+rr*s*Math.cos(a), H.y+rr*u, H.z+rr*s*Math.sin(a)],i*3);
+        const dist=Math.hypot(tgt[i*3]-H.x,tgt[i*3+1]-H.y,tgt[i*3+2]-H.z)/R;       // lo cercano a el foco se forma primero
+        tim.set([d.seed+(0.75*dist+0.25*Math.random())*d.gather*0.55, d.gather*0.45*(0.7+0.6*Math.random())],i*2);
+        rnd[i]=Math.random();
+      }
+      const g=new T.BufferGeometry();
+      g.setAttribute('position',new T.BufferAttribute(tgt,3)); g.setAttribute('aSrc',new T.BufferAttribute(src,3));
+      g.setAttribute('aTime',new T.BufferAttribute(tim,2)); g.setAttribute('aRnd',new T.BufferAttribute(rnd,1));
+      this.u={uTime:{value:0},uAlpha:{value:1},uSize:{value:d.size},uViewH:{value:800},uColor:{value:new T.Color(d.gold)},uMap:{value:glowTex}};
+      const ptsMat=new T.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:false,blending:T.AdditiveBlending,
+        vertexShader:`attribute vec3 aSrc; attribute vec2 aTime; attribute float aRnd;
+          uniform float uTime,uSize,uViewH; varying float vA;
+          void main(){
+            float k=clamp((uTime-aTime.x)/aTime.y,0.0,1.0); float e=k*k*(3.0-2.0*k);
+            vec3 p=mix(aSrc,position,e);
+            p+=vec3(sin(uTime*1.2+aRnd*40.0),cos(uTime*1.0+aRnd*30.0),sin(uTime*0.8+aRnd*20.0))*0.003*e;
+            vec4 mv=modelViewMatrix*vec4(p,1.0);
+            float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
+            gl_PointSize=clamp(uSize*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.5,48.0)*(0.6+0.8*aRnd);
+            gl_Position=projectionMatrix*mv;
+            vA=clamp((uTime-aTime.x)/0.25,0.0,1.0)*(0.5+0.5*e);
+          }`,
+        fragmentShader:`precision mediump float; uniform sampler2D uMap; uniform vec3 uColor; uniform float uAlpha; varying float vA;
+          void main(){ float a=texture2D(uMap,gl_PointCoord).a*vA*uAlpha; if(a<0.004) discard; gl_FragColor=vec4(uColor*a,a); }`});
+      this.pts=new T.Points(g,ptsMat); this.pts.frustumCulled=false; this.pts.renderOrder=40; this.pts.visible=false;
+      this.model.object3D.add(this.pts);
+      if(this._pend){ this._pend=false; this.start(); } });
+      // ---- 2) la luz del foco: la más blanca de la escena ----
+      this.hostMat=new T.SpriteMaterial({map:glowTex,color:new T.Color(d.light),transparent:true,depthWrite:false,depthTest:false,blending:T.AdditiveBlending,opacity:0});
+      this.hostSp=new T.Sprite(this.hostMat); this.hostSp.position.copy(H); this.hostSp.scale.setScalar(0.001); this.hostSp.renderOrder=60;
+      this.model.object3D.add(this.hostSp);
+      // ---- 3) rayos de luz dorada desdel foco (siempre de frente a quien mira) ----
+      this.ru={uTime:{value:0},uStr:{value:0},uLen:{value:0},uR:{value:d.raysR},uColor:{value:new T.Color(d.gold)},uCore:{value:new T.Color(d.light)}};
+      const rm=new T.ShaderMaterial({uniforms:this.ru,transparent:true,depthWrite:false,depthTest:false,blending:T.AdditiveBlending,
+        vertexShader:`uniform float uR; varying vec2 vP;
+          void main(){ vec4 mv=modelViewMatrix*vec4(0.0,0.0,0.0,1.0);
+            float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
+            mv.xy+=position.xy*uR*sc; vP=position.xy; gl_Position=projectionMatrix*mv; }`,
+        fragmentShader:`precision mediump float; uniform float uTime,uStr,uLen; uniform vec3 uColor,uCore; varying vec2 vP;
+          float h(float n){ return fract(sin(n)*43758.5453); }
+          float rays(float a,float r,float n,float rot,float sharp,float seed){
+            float x=(a+rot)/6.28318*n; float id=floor(x+0.5); float f=x-id;
+            float len=(0.45+0.55*h(id+seed))*uLen; float w=exp(-f*f*sharp);
+            return w*smoothstep(len,len*0.35,r)*smoothstep(0.06,0.16,r); }
+          void main(){ float r=length(vP); if(r>1.0) discard; float a=atan(vP.y,vP.x);
+            float t=uTime; float rot=t*0.02;
+            float v=rays(a,r,24.0,rot,60.0,1.0)+0.6*rays(a,r,37.0,-rot*0.7,120.0,7.0);
+            v*=0.75+0.25*sin(t*0.9);                                     // latido muy suave
+            float core=exp(-r*r*80.0)*uLen;
+            vec3 col=uColor*v+uCore*core*0.25; float al=(v+core)*uStr;
+            if(al<0.003) discard; gl_FragColor=vec4(col*uStr,al); }`});
+      this.rays=new T.Mesh(new T.PlaneGeometry(2,2),rm); this.rays.position.copy(H); this.rays.frustumCulled=false; this.rays.renderOrder=30; this.rays.visible=false;
+      this.model.object3D.add(this.rays);
+      // ---- 4) polvo: polvo dorado que sube lento desde la base ----
+      const M=d.incense, ip=new Float32Array(M*3), ir=new Float32Array(M*4);
+      for(let i=0;i<M;i++){ const a=Math.random()*Math.PI*2, r=Math.sqrt(Math.random())*0.16; ip.set([Math.cos(a)*r,0.06,Math.sin(a)*r*0.6],i*3); ir.set([Math.random(),Math.random(),Math.random(),Math.random()],i*4); }
+      const ig=new T.BufferGeometry(); ig.setAttribute('position',new T.BufferAttribute(ip,3)); ig.setAttribute('aR',new T.BufferAttribute(ir,4));
+      this.iu={uTime:{value:0},uAlpha:{value:0},uSize:{value:0.02},uViewH:{value:800},uColor:{value:new T.Color(d.gold)},uMap:{value:glowTex}};
+      const im=new T.ShaderMaterial({uniforms:this.iu,transparent:true,depthWrite:false,blending:T.AdditiveBlending,
+        vertexShader:`attribute vec4 aR; uniform float uTime,uSize,uViewH; varying float vA;
+          void main(){ float life=7.0+5.0*aR.x; float k=fract(uTime/life+aR.y);
+            vec3 p=position; p.y+=k*1.05;                                                    // sube hasta lo alto de el modelo
+            p.x+=sin(uTime*0.35+aR.z*12.0+k*4.0)*0.06*k; p.z+=cos(uTime*0.3+aR.w*12.0)*0.03*k;   // deriva como humo
+            vec4 mv=modelViewMatrix*vec4(p,1.0);
+            float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
+            gl_PointSize=clamp(uSize*(0.6+1.6*k)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,40.0);
+            gl_Position=projectionMatrix*mv; vA=smoothstep(0.0,0.15,k)*(1.0-smoothstep(0.55,1.0,k))*(0.4+0.6*aR.w); }`,
+        fragmentShader:`precision mediump float; uniform sampler2D uMap; uniform vec3 uColor; uniform float uAlpha; varying float vA;
+          void main(){ float a=texture2D(uMap,gl_PointCoord).a*vA*uAlpha*0.85; if(a<0.004) discard; gl_FragColor=vec4(uColor*a,a); }`});
+      this.inc=new T.Points(ig,im); this.inc.frustumCulled=false; this.inc.renderOrder=25; this.inc.visible=false;
+      this.model.object3D.add(this.inc);
+      this._foco();
+      // ---- el modelo real: oro con luz propia y luneta blanca; aparece con fundido ----
+      const prep=()=>{ const root=this.model.getObject3D('mesh'); if(!root) return;
+        this.mats=[]; root.traverse(o=>{ if(!o.isMesh) return; const m=o.material.clone(); const n=(o.name||'').toLowerCase();
+          if(d.vidrio && n.includes(d.vidrio.toLowerCase())){ m.color=new T.Color(HZC('#B9A888')); m.metalness=0.0; m.roughness=0.9; m.emissive=new T.Color(d.light); m.emissiveIntensity=0.14; }
+          else if(d.metal==='*' || (d.metal && n.includes(d.metal.toLowerCase()))){ m.metalness=1.0; m.roughness=0.26; m.envMap=this.envMap(); m.envMapIntensity=2.1; m.emissive=new T.Color(HZC('#000000')); m.emissiveIntensity=0; }
+          o.material=m; this.mats.push(m); });
+        if(this.modelT===null) this.setModelOpacity(0); };
+      this.model.addEventListener('model-loaded',prep);
+      if(this.model.getObject3D('mesh')) prep();
+      this.el.addEventListener('targetFound',()=>this.start());
+      this.el.addEventListener('targetLost',()=>{ clearTimeout(this._lostT); this._lostT=setTimeout(()=>this.reset(),2000); });
+    },
+    _foco(){ if(this.H && this.hostSp){ this.hostSp.position.copy(this.H); this.rays.position.copy(this.H); } },
+    envMap(){
+      if(this._env) return this._env;
+      const T=AFRAME.THREE, r=this.el.sceneEl.renderer, W=512,Hh=256, c=document.createElement('canvas'); c.width=W; c.height=Hh; const x=c.getContext('2d');
+      // estudio en penumbra: fondo casi negro cálido y fuentes de luz recortadas alrededor (cada cara del oro refleja algo distinto)
+      const bg=x.createLinearGradient(0,0,0,Hh); bg.addColorStop(0,HZC('#3a2810')); bg.addColorStop(0.5,HZC('#1e1308')); bg.addColorStop(1,HZC('#080403'));
+      x.fillStyle=bg; x.fillRect(0,0,W,Hh);
+      const box=(u,v,w,h,col,blur)=>{ x.save(); x.filter='blur('+blur+'px)'; x.fillStyle=col; x.fillRect(u*W-w*W/2,v*Hh-h*Hh/2,w*W,h*Hh); x.restore(); };
+      box(0.12,0.30,0.07,0.50,HZC('#FFF4DC'),6);   // tiras de luz verticales a distintos ángulos
+      box(0.37,0.25,0.07,0.40,HZC('#FFE2A8'),6);
+      box(0.62,0.35,0.09,0.55,HZC('#FFF0D0'),7);
+      box(0.87,0.28,0.06,0.45,HZC('#FFD890'),6);
+      box(0.50,0.06,0.70,0.08,HZC('#FFEFD0'),8);   // luz cenital
+      box(0.25,0.78,0.20,0.06,HZC('#7A5020'),10);  // rebote cálido bajo, tenue
+      const tex=new T.CanvasTexture(c); tex.mapping=T.EquirectangularReflectionMapping; tex.colorSpace=T.SRGBColorSpace;
+      try{ const pm=new T.PMREMGenerator(r); this._env=pm.fromEquirectangular(tex).texture; pm.dispose(); }catch(e){ this._env=tex; }
+      return this._env;
+    },
+    setModelOpacity(a){
+      if(!this.mats) return;
+      this.mats.forEach(m=>{ m.transparent=a<0.999; m.opacity=a; m.depthWrite=a>0.6; });
+      const root=this.model.getObject3D('mesh'); if(root) root.visible=a>0.001;
+    },
+    start(){
+      clearTimeout(this._lostT); if(this.running) return;
+      if(!this.pts){ this._pend=true; return; }
+      this.t=0; this.running=true; this.modelT=null;
+      this.u.uTime.value=0; this.u.uAlpha.value=1; this.pts.visible=true; this.rays.visible=true; this.inc.visible=true;
+      this.ru.uStr.value=0; this.ru.uLen.value=0; this.iu.uAlpha.value=0; this.setModelOpacity(0);
+    },
+    reset(){ this.running=false; this._pend=false; if(this.pts) this.pts.visible=false; this.rays.visible=false; this.inc.visible=false; this.hostMat.opacity=0; this.modelT=null; this.setModelOpacity(0); this.model.object3D.rotation.y=0; },
+    tick(t,dt){
+      if(!this.running){ if(this.el.components['mindar-image-target'] && this.el.object3D.visible) this.start(); if(!this.running) return; }
+      const d=this.data, st=Math.min(0.05,(dt||16)/1000); this.t+=st; const s=this.t;
+      const sm=x=>{ x=Math.min(1,Math.max(0,x)); return x*x*(3-2*x); };
+      const r=this.el.sceneEl.renderer; if(r){ const hgt=r.getContext().drawingBufferHeight; this.u.uViewH.value=hgt; this.iu.uViewH.value=hgt; }
+      this.u.uTime.value=s; this.ru.uTime.value=s; this.iu.uTime.value=s;
+      // punto de luz del foco: nace, crece y queda respirando
+      const born=sm(s/d.seed); const breath=0.88+0.12*Math.sin(s*1.1);
+      const settle=1-0.45*sm((s-d.seed-d.gather)/2.0);                 // al aparecer el modelo, la luz se recoge
+      this.hostMat.opacity=born*breath*(0.35+0.65*(1-sm((s-d.seed-d.gather)/2.0)))*0.55; this.hostSp.scale.setScalar(0.03+0.085*born*breath*settle);
+      // el modelo aparece cuando el oro ya formó el modelo (y el archivo terminó de bajar)
+      const formed=d.seed+d.gather*0.9;
+      if(this.mats && this.modelT===null && s>=formed) this.modelT=s;
+      if(this.modelT!==null){
+        const k=sm((s-this.modelT)/d.modelIn); this.setModelOpacity(k);
+        this.u.uAlpha.value=1-0.92*sm((s-this.modelT-d.modelIn*0.5)/1.6);    // el oro se disuelve en polvo
+      }
+      // rayos e polvo, después de la forma
+      const ri=sm((s-formed-0.4)/d.raysIn);
+      this.ru.uLen.value=ri; this.ru.uStr.value=1.0*ri;
+      this.iu.uAlpha.value=sm((s-formed)/3.0);
+      // balanceo lento, como una mirada que la rodea con respeto (entra suave)
+      const amp=d.sway*Math.PI/180*sm((s-formed)/4.0);
+      this.model.object3D.rotation.y=Math.sin(s*2*Math.PI/d.swayPeriod)*amp;
+    }
+  });
+  </script>
+
+  <!-- REVELA-BAJO-AGUA: la onda queda intacta; la imagen está en el fondo de esa misma agua y cada gota abre un claro que la devela -->
+  <script>
+  AFRAME.registerComponent('revela-bajo-agua',{
+    schema:{
+      radius:{default:0.3},          // radio de la imagen (1 = ancho de la página)
+      depth:{default:0.03},          // profundidad bajo la superficie del agua
+      after:{default:6},             // gotas antes de empezar a develarlo
+      maxTime:{default:16},          // para entonces queda completo
+      hold:{default:6},              // segundos que permanece develado
+      vanish:{default:4},            // segundos que tarda en hundirse y disolverse
+      rest:{default:4},              // pausa antes de que las gotas vuelvan a develarlo
+      refract:{default:0.035},       // cuánto deforma el agua al pasar una onda
+      tint:{default:HZC('#7FF3FF')},
+      src:{default:''}               // imagen (PNG/WebP con transparencia) que aparece bajo el agua
+    },
+    init(){
+      this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
+      this.findRipple=()=>this.anchor.querySelector('[ripple-surface]')||(this.el.parentNode&&this.el.parentNode.querySelector('[ripple-surface]'))||document.querySelector('#ripple');
+      this.t=0; this.running=false; this.seen=0; this.drops=0; this.clears=[]; this.built=false;
+      this.M=256; this.mc=document.createElement('canvas'); this.mc.width=this.mc.height=this.M; this.mx=this.mc.getContext('2d');
+      this.img=new Image(); if(this.data.src) this.img.src=hzSrc(this.data.src);
+      this.anchor.addEventListener('targetFound',()=>this.start());
+      this.anchor.addEventListener('targetLost',()=>{ clearTimeout(this._lostT); this._lostT=setTimeout(()=>this.reset(),2000); });
+    },
+    build(){
+      const T=AFRAME.THREE,d=this.data; this.ripple=this.findRipple(); const rc=this.ripple&&this.ripple.components['ripple-surface'];
+      if(!rc||!this.data.src||!this.img.complete||!this.img.naturalWidth) return false;
+      const ru=rc.uniforms, W=rc.data.width;                                   // la imagen comparte el tiempo y las gotas de la onda
+      this.maskTex=new T.CanvasTexture(this.mc);
+      const tex=new T.Texture(this.img); tex.colorSpace=T.SRGBColorSpace; tex.needsUpdate=true;
+      this.u={uMap:{value:tex},uMask:{value:this.maskTex},uAll:{value:0},uFade:{value:1},uTint:{value:new T.Color(d.tint)},uRef:{value:d.refract},
+        uK:{value:(d.radius*2)/W},                                              // tamaño de la imagen en coordenadas de la onda
+        iTime:ru.iTime,count:ru.count,centers:ru.centers,startT:ru.startT,speed:ru.speed,damp:ru.damp};
+      const mat=new T.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:false,
+        vertexShader:`varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+          void main(){ vUv=uv; vec4 mv=modelViewMatrix*vec4(position,1.0); vN=normalize(normalMatrix*vec3(0.0,0.0,1.0)); vV=normalize(-mv.xyz); gl_Position=projectionMatrix*mv; }`,
+        fragmentShader:`precision highp float; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+          uniform sampler2D uMap,uMask; uniform vec3 uTint; uniform float uAll,uFade,uRef,uK,iTime,speed,damp; uniform int count; uniform float centers[24]; uniform float startT[12];
+          void main(){
+            vec2 w=0.5+(vUv-0.5)*uK;                                             // posición en la superficie del agua
+            vec2 off=vec2(0.0); float caus=0.0;
+            for(int i=0;i<12;i++){ if(i>=count) break;
+              vec2 c=vec2(centers[2*i],centers[2*i+1]); float dt=max(0.0,iTime-startT[i]); vec2 dv=w-c; float r=length(dv); float wv=r-speed*dt;
+              float life=exp(-damp*dt*0.85); float prof=exp(-abs(wv)/0.02)*life;
+              off+=normalize(dv+1e-5)*(-sign(wv))*prof; caus+=exp(-abs(wv)/0.008)*life; }
+            vec2 uv=vUv+off*uRef;                                                 // refracción: el agua desplaza la imagen
+            vec4 c=texture2D(uMap,uv);
+            float m=max(texture2D(uMask,vUv).r,uAll); float a=smoothstep(0.12,0.85,m);
+            float view=abs(dot(normalize(vN),normalize(vV)));                    // de costado el agua refleja más y deja ver menos
+            float clarity=mix(0.35,1.0,smoothstep(0.15,0.75,view));
+            vec3 water=vec3(0.02,0.16,0.19);
+            vec3 col=mix(water,c.rgb,0.82*clarity)+uTint*caus*0.35;              // luz de las ondas sobre el oro
+            float edge=smoothstep(0.05,0.35,m)*(1.0-smoothstep(0.35,0.8,m));
+            col+=uTint*edge*0.3;
+            col=mix(water,col,uFade);                                              // al hundirse vuelve al color del agua
+            float al=c.a*max(a,edge*0.45)*mix(0.55,1.0,clarity)*uFade;
+            if(al<0.004) discard; gl_FragColor=vec4(col,al); }`});
+      // en el mismo plano de la onda, un poco por debajo de la superficie
+      this.group=new T.Group(); this.group.position.set(0,0,-d.depth);
+      this.plane=new T.Mesh(new T.PlaneGeometry(d.radius*2,d.radius*2),mat); this.plane.renderOrder=5;
+      // sombra suave: lo apoya en el fondo
+      const S=128,sc=document.createElement('canvas'); sc.width=sc.height=S; const sx=sc.getContext('2d'); const g=sx.createRadialGradient(S/2,S/2,S*0.3,S/2,S/2,S/2); g.addColorStop(0,'rgba(0,0,0,0.55)'); g.addColorStop(1,'rgba(0,0,0,0)'); sx.fillStyle=g; sx.fillRect(0,0,S,S);
+      this.shadowMat=new T.MeshBasicMaterial({map:new T.CanvasTexture(sc),transparent:true,depthWrite:false,opacity:0});
+      this.shadow=new T.Mesh(new T.PlaneGeometry(d.radius*2.5,d.radius*2.5),this.shadowMat); this.shadow.position.set(d.radius*0.04,-d.radius*0.04,-0.006); this.shadow.renderOrder=4;
+      this.group.add(this.shadow,this.plane); this.group.visible=false;
+      this.ripple.object3D.add(this.group);
+      this.built=true; return true;
+    },
+    start(){
+      clearTimeout(this._lostT); if(this.running) return;
+      if(!this.built && !this.build()){ this._pending=true; return; }
+      this._pending=false; this.running=true; this.cycle();
+      this.group.visible=true;
+    },
+    cycle(){                                                                    // empieza (o reempieza) un ciclo: oculto bajo el agua
+      this.t=0; this.drops=0; this.clears=[]; this.u.uAll.value=0; this.u.uFade.value=1; this.group.position.z=-this.data.depth;
+      const rc=this.ripple.components['ripple-surface']; this.seen=rc?rc._head:0;
+      this.mx.fillStyle='#000'; this.mx.fillRect(0,0,this.M,this.M); this.maskTex.needsUpdate=true;
+    },
+    reset(){ this.running=false; this._pending=false; if(this.group) this.group.visible=false; },
+    tick(t,dt){
+      if(!this.running){
+        if(this._pending || (this.anchor.components&&this.anchor.components['mindar-image-target']&&this.anchor.object3D.visible)) this.start();
+        if(!this.running) return; }
+      const d=this.data, st=Math.min(0.05,(dt||16)/1000); this.t+=st;
+      const rc=this.ripple.components['ripple-surface'];
+      if(rc){ const u=rc.uniforms, MAX=rc.MAX, k=1/this.u.uK.value;
+        while(this.seen<rc._head){ const i=this.seen%MAX; this.seen++; this.drops++;
+          if(this.drops>d.after && this.clears.length<40){
+            // el claro se abre exactamente donde cayó la gota
+            const px=0.5+(u.centers.value[i*2]-0.5)*k, py=0.5+(u.centers.value[i*2+1]-0.5)*k;
+            this.clears.push({x:px,y:1-py,t0:this.t,r:0.25+Math.random()*0.25}); } } }
+      if(this.clears.length){ const x=this.mx, M=this.M; x.globalCompositeOperation='lighter';
+        this.clears.forEach(c=>{ if(c.done) return; const q=Math.min(1,(this.t-c.t0)/2.4), e=1-Math.pow(1-q,3), R=Math.max(1,c.r*e*M);
+          const g=x.createRadialGradient(c.x*M,c.y*M,0,c.x*M,c.y*M,R); g.addColorStop(0,'rgba(255,255,255,0.10)'); g.addColorStop(0.7,'rgba(255,255,255,0.06)'); g.addColorStop(1,'rgba(255,255,255,0)');
+          x.fillStyle=g; x.beginPath(); x.arc(c.x*M,c.y*M,R,0,Math.PI*2); x.fill(); if(q>=1) c.done=true; });
+        x.globalCompositeOperation='source-over'; this.maskTex.needsUpdate=true; }
+      const g=Math.min(1,Math.max(0,(this.t-(d.maxTime-3))/3)); this.u.uAll.value=g*g*(3-2*g);
+      // la sombra aparece a medida que se devela
+      // develado completo → permanece → se hunde y se disuelve → pausa → vuelve a empezar
+      const sm=x=>{ x=Math.min(1,Math.max(0,x)); return x*x*(3-2*x); };
+      const v0=d.maxTime+d.hold, f=sm((this.t-v0)/d.vanish);
+      this.u.uFade.value=1-f; this.group.position.z=-d.depth-f*0.05;
+      const mean=Math.min(1,this.clears.filter(c=>c.done).length/8)*0.6+this.u.uAll.value*0.4; this.shadowMat.opacity=0.7*Math.max(mean,this.u.uAll.value)*(1-f);
+      if(this.t>v0+d.vanish+d.rest) this.cycle();
+    }
+  });
+  </script>
+
+  <!-- APARICIÓN-BRUMA: pasado el tiempo de espera, una imagen emerge desde la bruma y la escena se entibia -->
+  <script>
+  AFRAME.registerComponent('aparicion-bruma',{
+    schema:{
+      delay:{default:16},           // segundos antes de que aparezca
+      emerge:{default:6},           // segundos que tarda en salir de la niebla
+      width:{default:0.72},          // ancho de la imagen (1 = ancho de la página)
+      z:{default:0.1},             // altura sobre la página, entre las capas de bruma
+      parallax:{default:0.025},     // cuánto se desplaza al inclinar el celular
+      points:{default:7500},        // puntos que forman la figura
+      gather:{default:5.0},         // segundos que tardan en dibujarla
+      size:{default:0.0085},
+      rainGold:{default:HZC('#F0C070')},   // color final de la lluvia
+      fogGold:{default:HZC('#E2BC80')},    // color final de la bruma
+      splashGold:{default:HZC('#F6D08A')}, // color final de las salpicaduras
+      src:{default:''},              // imagen que emerge de la bruma
+      aspecto:{default:0}            // alto/ancho de la imagen (0 = el de la imagen)
+    },
+    init(){
+      const T=AFRAME.THREE,d=this.data;
+      this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
+      this.t=0; this.running=false;
+      const img=new Image(); img.onload=()=>{ if(!d.aspecto&&img.naturalWidth){ this.aspect=img.naturalHeight/img.naturalWidth; this.plane.geometry.dispose(); this.plane.geometry=new T.PlaneGeometry(d.width,d.width*this.aspect); } const tex=new T.Texture(img); tex.colorSpace=T.SRGBColorSpace; tex.needsUpdate=true; this.u.uMap.value=tex; this.buildPoints(img); this.ready=true; };
+      if(d.src) img.src=hzSrc(d.src);
+      const aspect=d.aspecto||1;
+      this.u={uMap:{value:null},uProg:{value:0},uTime:{value:0}};
+      const mat=new T.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:false,
+        vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+        fragmentShader:`precision highp float; varying vec2 vUv; uniform sampler2D uMap; uniform float uProg,uTime;
+          float h(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+          float n(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y); }
+          float fbm(vec2 p){ float v=0.0,a=0.5; for(int i=0;i<5;i++){ v+=a*n(p); p*=2.03; a*=0.5; } return v; }
+          void main(){
+            vec4 c=texture2D(uMap,vUv);
+            vec2 q=vUv*vec2(3.0,2.6)+vec2(uTime*0.03,-uTime*0.02);
+            float fog=fbm(q), fog2=fbm(q*1.7+3.1);
+            // contorno de bruma: sin rectángulo, bordes irregulares que respiran
+            vec2 e=(vUv-0.5)*2.0; float border=1.0-smoothstep(0.72,1.08,length(e*vec2(0.86,0.97))+(fog-0.5)*0.35);   // la bruma come solo los bordes y las esquinas
+            // aparece por zonas: primero lo luminoso (el haz, su rostro, los gatos a contraluz)
+            float lum=dot(c.rgb,vec3(0.3,0.59,0.11));
+            float reveal=smoothstep(0.0,0.35,uProg*1.45-(1.0-lum)*0.45-fog2*0.4);
+            float a=border*reveal*c.a*(0.9+0.1*sin(uTime*0.6+fog*6.0));
+            if(a<0.004) discard;
+            vec3 col=pow(c.rgb,vec3(0.82))*1.12;                                   // levanta los medios tonos: rostro y gatos legibles bajo la lluvia
+            gl_FragColor=vec4(col,a);
+          }`});
+      this.aspect=aspect; this.group=new T.Group(); this.group.position.z=d.z; this.group.visible=false; this.el.object3D.add(this.group);
+      this.plane=new T.Mesh(new T.PlaneGeometry(d.width,d.width*aspect),mat); this.plane.renderOrder=994; this.group.add(this.plane);
+      this.anchor.addEventListener('targetFound',()=>this.start());
+      this.anchor.addEventListener('targetLost',()=>{ clearTimeout(this._lostT); this._lostT=setTimeout(()=>this.reset(),2000); });
+    },
+    // la figura en puntos: cada punto toma el color real de su lugar en la imagen; los luminosos llegan primero
+    buildPoints(img){
+      const T=AFRAME.THREE,d=this.data, W=256, H=Math.round(W*this.aspect), cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+      const x=cv.getContext('2d'); x.drawImage(img,0,0,W,H); const px=x.getImageData(0,0,W,H).data;
+      const cand=[]; let tot=0;
+      const Lm=new Float32Array(W*H); for(let i=0;i<W*H;i++) Lm[i]=(0.3*px[i*4]+0.59*px[i*4+1]+0.11*px[i*4+2])/255;
+      for(let y=1;y<H-1;y++) for(let xx=1;xx<W-1;xx++){ const j=y*W+xx, i=j*4, L=Lm[j];
+        const ex=(xx/W-0.5)*2*0.86, ey=(y/H-0.5)*2*0.97; if(Math.hypot(ex,ey)>0.95) continue;       // dentro de la nube de bruma
+        // contornos y detalle (rulos, perfil, pelaje a contraluz) dibujan la figura; la bruma lisa casi no recibe puntos
+        const gx=(Lm[j-W+1]+2*Lm[j+1]+Lm[j+W+1])-(Lm[j-W-1]+2*Lm[j-1]+Lm[j+W-1]), gy=(Lm[j+W-1]+2*Lm[j+W]+Lm[j+W+1])-(Lm[j-W-1]+2*Lm[j-W]+Lm[j-W+1]);
+        const G=Math.min(1,Math.hypot(gx,gy)*2.2); const w=Math.pow(G,1.4)*(0.35+L)+0.004; cand.push([xx,y,w,Math.max(G,L*0.6),i]); tot+=w; }
+      const N=d.points, tgt=new Float32Array(N*3), src=new Float32Array(N*3), col=new Float32Array(N*3), tim=new Float32Array(N), rnd=new Float32Array(N);
+      const Wd=d.width, Hd=d.width*this.aspect;
+      for(let k=0;k<N;k++){ let r=Math.random()*tot, c=cand[0]; for(const q of cand){ r-=q[2]; if(r<=0){ c=q; break; } }
+        tgt.set([(c[0]/W-0.5)*Wd,(0.5-c[1]/H)*Hd,0.004],k*3);
+        col.set([px[c[4]]/255,px[c[4]+1]/255,px[c[4]+2]/255],k*3);
+        src.set([(Math.random()*2-1)*0.75,(Math.random()*2-1)*0.85,(Math.random()*0.35-0.1)],k*3);   // salen de toda la bruma
+        tim[k]=(0.05+0.6*(1-c[3])+0.35*Math.random())*d.gather*0.55; rnd[k]=Math.random(); }
+      const g=new T.BufferGeometry(); g.setAttribute('position',new T.BufferAttribute(tgt,3)); g.setAttribute('aSrc',new T.BufferAttribute(src,3));
+      g.setAttribute('aCol',new T.BufferAttribute(col,3)); g.setAttribute('aT',new T.BufferAttribute(tim,1)); g.setAttribute('aRnd',new T.BufferAttribute(rnd,1));
+      const S=64,c2=document.createElement('canvas'); c2.width=c2.height=S; const y2=c2.getContext('2d'); const gr=y2.createRadialGradient(S/2,S/2,0,S/2,S/2,S/2);
+      gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(0.35,'rgba(255,255,255,0.5)'); gr.addColorStop(1,'rgba(255,255,255,0)'); y2.fillStyle=gr; y2.fillRect(0,0,S,S);
+      this.pu={uTime:{value:-1},uDur:{value:d.gather*0.45},uAlpha:{value:1},uSize:{value:d.size},uViewH:{value:800},uMap:{value:new T.CanvasTexture(c2)}};
+      this.pts=new T.Points(g,new T.ShaderMaterial({uniforms:this.pu,transparent:true,depthWrite:false,blending:T.AdditiveBlending,
+        vertexShader:`attribute vec3 aSrc; attribute vec3 aCol; attribute float aT; attribute float aRnd; uniform float uTime,uDur,uSize,uViewH; varying vec3 vC; varying float vA;
+          void main(){ float k=clamp((uTime-aT)/uDur,0.0,1.0); float e=k*k*(3.0-2.0*k);
+            vec3 p=mix(aSrc,position,e); p.x+=sin(3.14159*e)*0.04*(aRnd-0.5);
+            p+=vec3(sin(uTime*1.1+aRnd*40.0),cos(uTime*0.9+aRnd*30.0),0.0)*0.003*e;
+            vec4 mv=modelViewMatrix*vec4(p,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
+            gl_PointSize=clamp(uSize*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.2,24.0)*(0.7+0.6*aRnd);
+            gl_Position=projectionMatrix*mv; vC=mix(vec3(0.85,0.78,0.6),aCol*1.35,smoothstep(0.3,1.0,e)); vA=clamp((uTime-aT)/0.4,0.0,1.0)*(0.45+0.55*e); }`,
+        fragmentShader:`precision mediump float; uniform sampler2D uMap; uniform float uAlpha; varying vec3 vC; varying float vA;
+          void main(){ float a=texture2D(uMap,gl_PointCoord).a*vA*uAlpha; if(a<0.004) discard; gl_FragColor=vec4(vC*a,a); }`}));
+      this.pts.frustumCulled=false; this.pts.renderOrder=996; this.group.add(this.pts);
+    },
+    clima(){                                                                      // la lluvia, la bruma y las salpicaduras de esta misma escena
+      if(this._cl) return this._cl; const T=AFRAME.THREE, q=n=>{ const el=this.anchor.querySelector('['+n+']')||(this.el.parentNode&&this.el.parentNode.querySelector('['+n+']')); return el&&el.components[n]; };
+      const r=q('lluvia-v2'), f=q('niebla-v2'), sp=q('salpicaduras'); if(!r||!f||!sp||!r.u||!f.u||!sp.u) return null;
+      this._cl={r,f,sp, c0:[r.u.uColor.value.clone(),f.u.uColor.value.clone(),sp.u.uColor.value.clone()],
+        c1:[new T.Color(this.data.rainGold),new T.Color(this.data.fogGold),new T.Color(this.data.splashGold)]};
+      return this._cl;
+    },
+    warm(k){ const cl=this.clima(); if(!cl) return;
+      [cl.r,cl.f,cl.sp].forEach((o,i)=>o.u.uColor.value.copy(cl.c0[i]).lerp(cl.c1[i],k));
+      if(cl.r.u.uBeamK) cl.r.u.uBeamK.value=k; },
+    start(){ clearTimeout(this._lostT); if(this.running) return; this.running=true; this.t=0; this.warm(0); this.u.uProg.value=0; this.group.visible=true; if(this.pu){ this.pu.uTime.value=-1; this.pu.uAlpha.value=1; } },
+    reset(){ this.running=false; this.group.visible=false; this.u.uProg.value=0; this.warm(0); },
+    tick(t,dt){
+      if(!this.running){ if(this.anchor.components&&this.anchor.components['mindar-image-target']&&this.anchor.object3D.visible) this.start(); else return; }
+      const d=this.data; this.t+=Math.min(0.05,(dt||16)/1000);
+      const q=this.t-d.delay;                                                        // segundos desde los 16
+      if(this.pu){ this.pu.uTime.value=q; const r=this.el.sceneEl.renderer; if(r) this.pu.uViewH.value=r.getContext().drawingBufferHeight;
+        this.pu.uAlpha.value=1-0.88*Math.min(1,Math.max(0,(q-d.gather-1.6)/1.8)); }       // cuando la imagen está, el polvo se disuelve
+      this.u.uProg.value=Math.min(1,Math.max(0,(q-d.gather*0.8)/d.emerge));               // la imagen aparece debajo de los puntos ya formados
+      this.u.uTime.value=this.t;
+      const wk=Math.min(1,Math.max(0,q/(d.gather+d.emerge))); this.warm(wk*wk*(3-2*wk));   // la escena se entibia mientras él aparece
+      const W=window.__lluviaWind||{x:0,z:0}; this.group.position.x=W.x*d.parallax; this.group.position.y=-W.z*d.parallax*0.6;
+    }
+  });
+  </script>
+
+  <!-- PLEXUS (RGB vivo + IDs) -->
+  <script>
+  AFRAME.registerComponent('plexus',{
+    schema:{
+      count:{default:180}, area:{default:1.2}, speed:{default:0.12},
+      maxDist:{default:0.45}, maxConn:{default:4},
+      thickness:{default:1.2}, opacity:{default:1.0},
+      showIds:{default:true}, idSize:{default:0.028}, idColor:{default:HZC('#FFFFFF')},
+      idOffsetX:{default:0.02}, idOffsetY:{default:0.02}, idOffsetZ:{default:0.0}
+    },
+    init(){
+      const T=AFRAME.THREE,d=this.data,N=d.count,R=d.area;
+      this.pos=new Float32Array(N*3); this.vel=new Float32Array(N*3);
+      for(let i=0;i<N;i++){
+        const r=R*Math.cbrt(Math.random()), phi=Math.acos(2*Math.random()-1), th=Math.random()*Math.PI*2;
+        const x=r*Math.sin(phi)*Math.cos(th), y=r*Math.cos(phi)*0.6, z=r*Math.sin(phi)*Math.sin(th);
+        this.pos.set([x,y,z],i*3);
+        this.vel.set([(Math.random()-0.5)*d.speed,(Math.random()-0.5)*d.speed*0.6,(Math.random()-0.5)*d.speed],i*3);
+      }
+      // Paleta dorada: cada nodo recibe un matiz fijo de oro (claro, medio, profundo)
+      const hexPalette=[HZC(0xB98222),HZC(0x94661A),HZC(0x6E4A10)];
+      this.palette = hexPalette.map(h=>new T.Color(h));
+      this.nodeCol=new Float32Array(N*3);
+      for(let i=0;i<N;i++){ const c=this.palette[i%this.palette.length]; this.nodeCol.set([c.r,c.g,c.b],i*3); }
+      const dotGeo=new T.BufferGeometry(); dotGeo.setAttribute('position',new T.BufferAttribute(this.pos,3));
+      dotGeo.setAttribute('color',new T.BufferAttribute(this.nodeCol,3));
+      const dotMat=new T.PointsMaterial({size:3.0,sizeAttenuation:false,vertexColors:true,transparent:true,opacity:0.9,depthTest:false,depthWrite:false});
+      this.dots=new T.Points(dotGeo,dotMat); this.dots.renderOrder=999;
+
+      const MAX_SEG=N*d.maxConn;
+      this.linePositions=new Float32Array(MAX_SEG*2*3);
+      this.lineColors   =new Float32Array(MAX_SEG*2*3);
+      const lineGeo=new T.BufferGeometry();
+      lineGeo.setAttribute('position',new T.BufferAttribute(this.linePositions,3));
+      lineGeo.setAttribute('color',   new T.BufferAttribute(this.lineColors,3));
+      lineGeo.setDrawRange(0,0);
+
+
+      const lineMat=new T.LineBasicMaterial({vertexColors:true, transparent:true, opacity:d.opacity, depthTest:false, depthWrite:false});
+      lineMat.blending = T.AdditiveBlending;
+
+      this.lines=new T.LineSegments(lineGeo,lineMat); this.lines.renderOrder=1000;
+
+      this.labelsGrp=new T.Group(); this.labels=[];
+      if(d.showIds){
+        for(let i=0;i<N;i++){
+          const size=128, c=document.createElement('canvas'); c.width=size; c.height=size; const ctx=c.getContext('2d');
+          ctx.clearRect(0,0,size,size); ctx.textAlign='center'; ctx.textBaseline='middle';
+          ctx.font='700 64px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+          ctx.lineWidth=6; ctx.strokeStyle='rgba(0,0,0,0.65)'; ctx.strokeText(String(i+1), size/2, size/2);
+          ctx.fillStyle=d.idColor; ctx.fillText(String(i+1), size/2, size/2);
+          const tex=new T.CanvasTexture(c); tex.needsUpdate=true;
+          const mat=new T.SpriteMaterial({map:tex, transparent:true, depthTest:false, depthWrite:false, opacity:0.95, blending:T.AdditiveBlending});
+          const spr=new T.Sprite(mat); spr.scale.set(d.idSize,d.idSize,d.idSize);
+          this.labelsGrp.add(spr); this.labels.push(spr);
+        }
+        this.labelsGrp.renderOrder=1001;
+      }
+
+      this.grp=new T.Group(); this.grp.add(this.dots, this.lines, this.labelsGrp);
+      this.el.object3D.add(this.grp);
+      this.clock=new T.Clock();
+    },
+    tick(){
+      const d=this.data,dt=Math.min(0.033,this.clock.getDelta());
+      const N=d.count,R=d.area,P=this.pos,V=this.vel;
+
+      for(let i=0;i<N;i++){
+        const i3=i*3;
+        P[i3]+=V[i3]*dt; P[i3+1]+=V[i3+1]*dt; P[i3+2]+=V[i3+2]*dt;
+        const m=Math.max(0,(Math.hypot(P[i3],P[i3+2])*1.0+Math.abs(P[i3+1])*1.4)-R);
+        if(m>0){ V[i3]-=P[i3]*m*0.6*dt; V[i3+1]-=P[i3+1]*m*0.6*dt; V[i3+2]-=P[i3+2]*m*0.6*dt; }
+      }
+      this.dots.geometry.attributes.position.needsUpdate=true;
+
+      const maxDist2=d.maxDist*d.maxDist; let segCount=0;
+      const conn=new Uint16Array(N); const L=this.linePositions, C=this.lineColors;
+
+      for(let i=0;i<N;i++){
+        if(conn[i]>=d.maxConn) continue;
+        const i3=i*3;
+        for(let j=i+1;j<N;j++){
+          if(conn[i]>=d.maxConn && conn[j]>=d.maxConn) break;
+          const j3=j*3, dx=P[i3]-P[j3], dy=P[i3+1]-P[j3+1], dz=P[i3+2]-P[j3+2];
+          if(dx*dx+dy*dy+dz*dz<=maxDist2){
+            const o=segCount*6;
+            L[o]=P[i3]; L[o+1]=P[i3+1]; L[o+2]=P[i3+2];
+            L[o+3]=P[j3]; L[o+4]=P[j3+1]; L[o+5]=P[j3+2];
+            const NC=this.nodeCol;   // degradé entre el color fijo de cada extremo (sin titileo)
+            C[o]=NC[i3]; C[o+1]=NC[i3+1]; C[o+2]=NC[i3+2];
+            C[o+3]=NC[j3]; C[o+4]=NC[j3+1]; C[o+5]=NC[j3+2];
+            segCount++; conn[i]++; conn[j]++;
+            if(segCount*6>=L.length) break;
+          }
+        }
+        if(segCount*6>=L.length) break;
+      }
+      const geo=this.lines.geometry;
+      geo.attributes.position.needsUpdate=true;
+      geo.attributes.color.needsUpdate=true;
+      geo.setDrawRange(0, segCount*2);
+
+      if(d.showIds){
+        const ox=d.idOffsetX, oy=d.idOffsetY, oz=d.idOffsetZ;
+        for(let i=0;i<N;i++){
+          const i3=i*3, sp=this.labels[i];
+          if(sp) sp.position.set(P[i3]+ox, P[i3+1]+oy, P[i3+2]+oz);
+        }
+      }
+    }
+  });
+  </script>
+
+  <!-- BILLBOARD -->
+  <script>
+  AFRAME.registerComponent('billboard',{schema:{axis:{default:'y'}},init(){ this._v=new AFRAME.THREE.Vector3(); this._my=new AFRAME.THREE.Vector3(); },tick(){const cam=this.el.sceneEl.camera; if(!cam) return; const obj=this.el.object3D; cam.getWorldPosition(this._v); obj.getWorldPosition(this._my); if(this.data.axis==='y'){ this._v.y=this._my.y; } obj.lookAt(this._v); }});
+  </script>
+
+  <!-- TEXTO por letras (neón) + EXPLOSIÓN DE PARTÍCULAS (a los 3s) -->
+  <script>
+  AFRAME.registerComponent('canvas-letters-rise',{
+    schema:{
+      text:{default:'[Hz]'}, color:{default:HZC('#FFFFFF')}, font:{default:'900 120px sans-serif'},
+      gap:{default:0.16}, size:{default:0.55},
+      rise:{default:1.3}, dur:{default:2600}, delayMax:{default:1800},
+      neon:{default:true}, neonColor:{default:HZC('#CFA15D')}, neonGlow:{default:56},
+      trail:{default:true}, trailEvery:{default:80}, trailLife:{default:800}, trailOpacity:{default:0.40}, trailRiseSpeed:{default:0.42},
+      startFromBottom:{default:0.78},
+      explodeDelay:{default:3000},
+      particlesPerChar:{default:140},
+      particleSize:{default:10}, particleSpeed:{default:0.85}, particleSpread:{default:0.22}, particleLife:{default:1600}, gravity:{default:-1.20}, drag:{default:0.985}
+    },
+    init(){
+      const T=AFRAME.THREE,d=this.data; this.letters=[]; this._ghosts=[]; this.clock=new T.Clock();
+      this._state='idle'; this._explGroups=[]; this._explodeAt=null;
+      const chars=[...d.text.toUpperCase()], n=chars.length, startX=-((n-1)*d.gap)/2, baseY=-d.startFromBottom;
+
+      const makeTex=(ch)=>{ const W=512,H=512,c=document.createElement('canvas'); c.width=W; c.height=H;
+        const x=c.getContext('2d');
+        x.clearRect(0,0,W,H);
+        x.textAlign='center'; x.textBaseline='middle';
+        x.font=d.font;
+        if(d.neon){ x.shadowColor=d.neonColor; x.shadowBlur=d.neonGlow; x.fillStyle=d.neonColor; x.fillText(ch,W/2,H/2); x.shadowBlur=Math.max(8,d.neonGlow*0.35); x.fillText(ch,W/2,H/2); }
+        x.shadowBlur=0; x.fillStyle=d.color; x.fillText(ch,W/2,H/2);
+        const tex=new T.CanvasTexture(c);
+        tex.colorSpace=T.SRGBColorSpace; tex.premultiplyAlpha=true; tex.generateMipmaps=false; tex.minFilter=T.LinearFilter; tex.magFilter=T.LinearFilter; tex.needsUpdate=true; return tex;
+      };
+
+      for(let i=0;i<n;i++){
+        const ch=chars[i];
+        const wrapper=document.createElement('a-entity');
+        wrapper.object3D.position.set(startX+i*d.gap, baseY, 0);
+        wrapper.object3D.scale.set(d.size,d.size,d.size);
+        if(ch!==' '){
+          const geo=new T.PlaneGeometry(1,1);
+          const mat=new T.MeshBasicMaterial({map:makeTex(ch),transparent:true,side:T.DoubleSide,alphaTest:0.05});
+          mat.depthTest=false; mat.depthWrite=false; mat.toneMapped=false;
+          const mesh=new T.Mesh(geo,mat); mesh.renderOrder=10000;
+          wrapper.object3D.add(mesh);
+        }else{
+          wrapper.setAttribute('visible','false');
+        }
+        this.el.appendChild(wrapper); this.letters.push(wrapper);
+      }
+
+      const s=64, can=document.createElement('canvas'); can.width=can.height=s;
+      const ctx=can.getContext('2d'); const g=ctx.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+      g.addColorStop(0,'rgba(255,255,255,1)'); g.addColorStop(0.5,'rgba(255,255,255,0.6)'); g.addColorStop(1,'rgba(255,255,255,0)');
+      ctx.fillStyle=g; ctx.fillRect(0,0,s,s);
+      this._particleTex=new T.CanvasTexture(can);
+      this._particleTex.colorSpace = T.SRGBColorSpace;
+      this._particleTex.premultiplyAlpha = true;
+      this._particleTex.generateMipmaps = false;
+      this._particleTex.minFilter = T.LinearFilter;
+      this._particleTex.magFilter = T.LinearFilter;
+      this._particleTex.needsUpdate=true;
+    },
+    _spawnGhost(from){
+      const T=AFRAME.THREE,d=this.data; const src=from.object3D.children[0]; if(!src) return;
+      const geo=src.geometry; const mat=src.material.clone(); mat.transparent=true; mat.depthTest=false; mat.depthWrite=false; mat.blending=T.AdditiveBlending; mat.opacity=d.trailOpacity; mat.toneMapped=false;
+      const ghost=new T.Mesh(geo,mat); ghost.renderOrder=9999; const wpos=new T.Vector3(); from.object3D.getWorldPosition(wpos); this.el.object3D.worldToLocal(wpos); ghost.position.copy(wpos);
+      this.el.object3D.add(ghost); this._ghosts.push({m:ghost,t:0,life:d.trailLife/1000});
+    },
+    start(){
+      const d=this.data;
+      this.reset();
+      this._state='rise';
+      this._explodeAt = performance.now() + d.explodeDelay;
+
+      this.letters.forEach((e)=>{
+        const p=e.object3D.position;
+        const delay=Math.random()*d.delayMax;
+        e.setAttribute('animation__rise',{
+          property:'position',
+          to:`${p.x} ${p.y + d.rise} ${p.z}`,
+          dur:d.dur, delay, easing:'easeOutCubic'
+        });
+        if(d.trail){
+          const startAt=delay, endAt=delay+d.dur;
+          setTimeout(()=>{ e._trailInt=setInterval(()=>this._spawnGhost(e),d.trailEvery); }, startAt);
+          setTimeout(()=>{ clearInterval(e._trailInt); e._trailInt=null; }, endAt+60);
+        }
+      });
+
+      this.clock.getDelta();
+    },
+    _explode(){
+      const T=AFRAME.THREE, d=this.data;
+      this._state='explode';
+      for(const e of this.letters){
+        const mesh=e.object3D.children[0];
+        if(mesh) mesh.visible=false;
+        const Np=d.particlesPerChar;
+        const pos=new Float32Array(Np*3);
+        const vel=new Float32Array(Np*3);
+        const base=e.object3D.position.clone();
+        for(let i=0;i<Np;i++){
+          const a=Math.random()*Math.PI*2;
+          const r=d.particleSpread*Math.sqrt(Math.random());
+          const px = base.x + Math.cos(a)*r;
+          const py = base.y + (Math.random()-0.5)*d.particleSpread*0.7;
+          const pz = base.z + Math.sin(a)*r;
+          pos[3*i]=px; pos[3*i+1]=py; pos[3*i+2]=pz;
+          const sp = d.particleSpeed*(0.6+0.8*Math.random());
+          vel[3*i]  = Math.cos(a)*sp*(0.8+0.4*Math.random());
+          vel[3*i+1]= (0.35+Math.random()*0.6)*sp;
+          vel[3*i+2]= Math.sin(a)*sp*(0.8+0.4*Math.random());
+        }
+        const geo=new T.BufferGeometry();
+        geo.setAttribute('position', new T.BufferAttribute(pos,3));
+        const mat=new T.PointsMaterial({
+          map:this._particleTex, size:d.particleSize, sizeAttenuation:false,
+          transparent:true, opacity:1.0, depthTest:false, depthWrite:false, blending:T.AdditiveBlending
+        });
+        mat.toneMapped=false;
+        const points=new T.Points(geo,mat);
+        points.renderOrder=10050;
+        this.el.object3D.add(points);
+        this._explGroups.push({points,pos,vel,born:performance.now(),life:d.particleLife});
+      }
+    },
+    _updateExplosion(now, dt){
+      const d=this.data;
+      for(let i=this._explGroups.length-1;i>=0;i--){
+        const g=this._explGroups[i];
+        const t = now - g.born;
+        const k = Math.min(1, t / g.life);
+        const P=g.pos, V=g.vel, n=P.length/3;
+        for(let j=0;j<n;j++){
+          const j3=j*3;
+          V[j3]   *= d.drag;
+          V[j3+1]  = (V[j3+1] + d.gravity*dt) * d.drag;
+          V[j3+2] *= d.drag;
+          P[j3]   += V[j3]*dt;
+          P[j3+1] += V[j3+1]*dt;
+          P[j3+2] += V[j3+2]*dt;
+        }
+        g.points.geometry.attributes.position.needsUpdate=true;
+        g.points.material.opacity = 1.0 - k;
+        if(k>=1){
+          this.el.object3D.remove(g.points);
+          g.points.geometry.dispose(); g.points.material.dispose();
+          this._explGroups.splice(i,1);
+        }
+      }
+      if(this._explGroups.length===0) this._state='done';
+    },
+    tick(){
+      const dt=this.clock.getDelta();
+      if(this._state==='rise' && this._explodeAt && performance.now() >= this._explodeAt){
+        this._explode();
+        this._explodeAt = null;
+      }
+      for(let i=this._ghosts.length-1;i>=0;i--){
+        const g=this._ghosts[i], d=this.data;
+        g.t+=dt; const k=g.t/(d.trailLife/1000);
+        if(g.m.material) g.m.material.opacity=d.trailOpacity*(1-Math.min(1,k));
+        g.m.position.y+=d.trailRiseSpeed*dt;
+        if(k>=1){ this.el.object3D.remove(g.m); this._ghosts.splice(i,1); }
+      }
+      if(this._state==='explode' && this._explGroups.length>0){
+        this._updateExplosion(performance.now(), dt);
+      }
+    },
+    reset(){
+      const d=this.data,n=this.letters.length,startX=-((n-1)*d.gap)/2,baseY=-d.startFromBottom;
+      this._state='idle';
+      this._explodeAt=null;
+      this.letters.forEach((e,i)=>{
+        e.removeAttribute('animation__rise');
+        if(e._trailInt) clearInterval(e._trailInt);
+        e.object3D.position.set(startX+i*d.gap,baseY,0);
+        const mesh=e.object3D.children[0]; if(mesh) mesh.visible=true;
+      });
+      this._ghosts.forEach(g=>this.el.object3D.remove(g.m)); this._ghosts.length=0;
+      if(this._explGroups){
+        this._explGroups.forEach(g=>{
+          this.el.object3D.remove(g.points);
+          g.points.geometry.dispose(); g.points.material.dispose();
+        });
+        this._explGroups.length=0;
+      }
+    }
+  });
+  </script>
+
+  <!-- HEARTBEAT PULSE -->
+  <script>
+  AFRAME.registerComponent('heartbeat-pulse',{
+    schema:{period:{default:1600},gap:{default:180},radius:{default:1.35},softness:{default:0.6},intensity:{default:0.9},colorInner:{default:HZC('#FFE0B3')},colorOuter:{default:HZC('#FF9A4D')}},
+    init(){
+      const T=AFRAME.THREE, geo=new T.PlaneGeometry(2,2);
+      const vert=`varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`;
+      const frag=`precision highp float; varying vec2 vUv; uniform float uTime,uPeriod,uGap,uRadius,uSoft,uIntensity; uniform vec3 uC1,uC2;
+      float beat(float t){ float x=mod(t,uPeriod)/uPeriod, g=uGap/uPeriod; float p1=exp(-pow((x-0.02)/0.06,2.0)); float p2=exp(-pow((x-g)/0.06,2.0)); return clamp(p1+0.85*p2,0.0,1.5); }
+      void main(){ vec2 p=vUv-0.5; float r=length(p)*2.0; float b=beat(uTime); float R=mix(0.15,uRadius,b); float edge=smoothstep(R,R-uSoft,r);
+        vec3 col=mix(uC1,uC2,clamp(r/R,0.0,1.0)); float ring=(1.0-edge)*uIntensity*(0.7+0.3*b); gl_FragColor=vec4(col*ring, ring); }`;
+      this.uniforms={uTime:{value:0},uPeriod:{value:this.data.period},uGap:{value:this.data.gap},uRadius:{value:this.data.radius},uSoft:{value:this.data.softness},uIntensity:{value:this.data.intensity},uC1:{value:new T.Color(this.data.colorInner)},uC2:{value:new T.Color(this.data.colorOuter)}};
+      const mat=new T.ShaderMaterial({uniforms:this.uniforms,vertexShader:vert,fragmentShader:frag,transparent:true,depthTest:false,depthWrite:false,blending:T.AdditiveBlending});
+      this.mesh=new T.Mesh(geo,mat); this.mesh.renderOrder=10000; this.mesh.position.set(0,0,-0.1); this.mesh.scale.set(10,10,10);
+      const setup=()=>{const camEl=this.el.sceneEl.cameraEl||this.el.sceneEl.querySelector('a-camera'); if(camEl&&camEl.object3D){camEl.object3D.add(this.mesh); this.clock=new T.Clock();} else {this.el.sceneEl.addEventListener('loaded',()=>{const camEl2=this.el.sceneEl.cameraEl||this.el.sceneEl.querySelector('a-camera'); camEl2&&camEl2.object3D&&camEl2.object3D.add(this.mesh); this.clock=new T.Clock();},{once:true});}};
+      if(this.el.sceneEl.hasLoaded) setup(); else this.el.sceneEl.addEventListener('loaded',setup,{once:true});
+    },
+    tick(){ if(!this.clock) return; this.uniforms.uTime.value += this.clock.getDelta()*1000.0; },
+    remove(){ if(this.mesh&&this.mesh.parent) this.mesh.parent.remove(this.mesh); if(this.mesh){this.mesh.geometry.dispose(); this.mesh.material.dispose(); this.mesh=null;} }
+  });
+  </script>
+
+  <!-- ADN -->
+  <script>
+  AFRAME.registerComponent('dna-helix', {
+    schema: {segments:{type:'int',default:170}, radius:{type:'number',default:0.12}, pitch:{type:'number',default:0.035}, freq:{type:'number',default:0.38}, speed:{type:'number',default:0.7}, bead:{type:'number',default:0.012}, rung:{type:'number',default:0.004}, glow:{type:'number',default:0.7}, halo:{type:'number',default:0.8}, haloSize:{type:'number',default:0.07}, aura:{type:'number',default:0.35}, haloColor:{default:HZC('#FFC870')}, ring:{type:'number',default:0}, tilt:{type:'number',default:18}, spin:{type:'number',default:0.12}, riseH:{type:'number',default:1.3}, riseFrom:{type:'number',default:-1.0}},   // ring>0: la hélice se curva en una aureola de ese radio
+    init: function () {
+      const el=this.el, THREE=AFRAME.THREE, d=this.data;
+      this.reveal=1;   // 0..1: cuánto de la hélice está visible (lo maneja 'genesis')
+      this.group=new THREE.Group(); el.setObject3D('dna', this.group);
+      // ADN en dorado: cuatro matices de oro para las bases (A, T, C, G)
+      const matA=new THREE.MeshStandardMaterial({color:HZC(0xE8B95A), metalness:0.6, roughness:0.35, emissive:HZC(0x8A5A12), emissiveIntensity:d.glow});
+      const matT=new THREE.MeshStandardMaterial({color:HZC(0xF5D894), metalness:0.6, roughness:0.35, emissive:HZC(0x9C7426), emissiveIntensity:d.glow});
+      const matC=new THREE.MeshStandardMaterial({color:HZC(0xB7802A), metalness:0.6, roughness:0.35, emissive:HZC(0x6B420C), emissiveIntensity:d.glow});
+      const matG=new THREE.MeshStandardMaterial({color:HZC(0xD9A441), metalness:0.6, roughness:0.35, emissive:HZC(0x7E5414), emissiveIntensity:d.glow});
+      const mats={A:matA,T:matT,C:matC,G:matG};
+      const beadGeo=new THREE.SphereGeometry(d.bead,16,16);
+      const rungMat=new THREE.MeshStandardMaterial({color:HZC(0xC9A25E), metalness:0.5, roughness:0.4, emissive:HZC(0x5E4214), emissiveIntensity:0.6});
+      const railMat=new THREE.MeshStandardMaterial({color:HZC(0x9C7430), metalness:0.6, roughness:0.4, emissive:HZC(0x4A320C), emissiveIntensity:0.5});
+      const compl=b=>({A:'T',T:'A',C:'G',G:'C'}[b]||'C');
+      const randBase=()=> (Math.random()<0.5?(Math.random()<0.5?'A':'T'):(Math.random()<0.5?'C':'G'));
+      this.leftBeads=[]; this.rightBeads=[]; this.rungs=[]; this.leftPath=new THREE.Group(); this.rightPath=new THREE.Group();
+      this.group.add(this.leftPath,this.rightPath);
+      const railRadius=d.rung*0.7; this.phase=0; const H=d.segments*d.pitch;
+      if(d.ring>0){ this.leftPath.add(new THREE.Mesh(new THREE.CylinderGeometry(railRadius,railRadius,1,10),railMat)); this.rightPath.add(new THREE.Mesh(new THREE.CylinderGeometry(railRadius,railRadius,1,10),railMat)); }   // tramo que cierra el anillo
+      this.morph=1; this.spinA=0;   // morph: 0 = hélice recta que sube desde abajo, 1 = aureola (lo maneja 'genesis')
+      for(let i=0;i<d.segments;i++){
+        const y=(i/(d.segments-1)-0.5)*H;
+        const baseL=randBase(), baseR=compl(baseL);
+        const beadL=new THREE.Mesh(beadGeo,mats[baseL]);
+        const beadR=new THREE.Mesh(new THREE.SphereGeometry(d.bead,16,16),mats[baseR]);
+        this.group.add(beadL,beadR); this.leftBeads.push(beadL); this.rightBeads.push(beadR);
+        const rungGeo=new THREE.CylinderGeometry(d.rung,d.rung,1,12);
+        const rung=new THREE.Mesh(rungGeo,rungMat);
+        this.group.add(rung); this.rungs.push(rung);
+        if(i>0){
+          const segGeoL=new THREE.CylinderGeometry(railRadius,railRadius,1,10);
+          const segGeoR=new THREE.CylinderGeometry(railRadius,railRadius,1,10);
+          const segL=new THREE.Mesh(segGeoL,railMat);
+          const segR=new THREE.Mesh(segGeoR,railMat);
+          this.leftPath.add(segL); this.rightPath.add(segR);
+        }
+      }
+      // ---- RESPLANDOR: halo suave en cada base + aura dorada detrás de la hélice ----
+      const S=64, cv=document.createElement('canvas'); cv.width=cv.height=S; const cx=cv.getContext('2d');
+      const gr=cx.createRadialGradient(S/2,S/2,0,S/2,S/2,S/2);
+      gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(0.3,'rgba(255,255,255,0.45)'); gr.addColorStop(1,'rgba(255,255,255,0)');
+      cx.fillStyle=gr; cx.fillRect(0,0,S,S);
+      const glowTex=new THREE.CanvasTexture(cv);
+      const NB=d.segments*2;
+      this.haloPos=new Float32Array(NB*3);
+      const hg=new THREE.BufferGeometry(); hg.setAttribute('position',new THREE.BufferAttribute(this.haloPos,3));
+      this.haloU={uMap:{value:glowTex},uColor:{value:new THREE.Color(d.haloColor)},uStr:{value:d.halo},uSize:{value:d.haloSize},uViewH:{value:800}};
+      const hm=new THREE.ShaderMaterial({uniforms:this.haloU,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+        vertexShader:`uniform float uSize,uViewH; void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0);
+          float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
+          gl_PointSize=min(256.0, uSize*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,-mv.z)); gl_Position=projectionMatrix*mv; }`,
+        fragmentShader:`uniform sampler2D uMap; uniform vec3 uColor; uniform float uStr;
+          void main(){ float a=texture2D(uMap,gl_PointCoord).a*uStr; if(a<0.004) discard; gl_FragColor=vec4(uColor*a,a); }`});
+      this.halo=new THREE.Points(hg,hm); this.halo.frustumCulled=false; this.halo.renderOrder=30; this.group.add(this.halo);
+      if(d.aura>0){
+        this.auraMat=new THREE.SpriteMaterial({map:glowTex,color:new THREE.Color(d.haloColor),transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:d.aura});
+        const au=new THREE.Sprite(this.auraMat); if(d.ring>0) au.scale.set(d.ring*2.7, d.ring*2.7, 1); else au.scale.set(d.radius*7, d.segments*d.pitch*1.15, 1); au.renderOrder=29;
+        el.setObject3D('dnaAura', au);   // fuera del grupo: no gira, queda como resplandor de fondo
+      }
+    },
+    updatePositions: function (t) {
+      const THREE=AFRAME.THREE, d=this.data, H=d.segments*d.pitch;
+      let prevL=null, prevR=null, idxRailL=0, idxRailR=0;
+      for(let i=0;i<d.segments;i++){
+        let L,R;
+        if(d.ring>0){                                                           // aureola: el eje de la hélice es un círculo alrededor del cerebro
+          const turns=Math.round(d.segments*d.freq/(Math.PI*2));
+          const sg=Math.PI/2+i/d.segments*Math.PI*2, ang=i/d.segments*Math.PI*2*turns+t;    // empieza adelante del cerebro
+          // anillo horizontal, como el de Saturno: rodea al cerebro a la altura de su ecuador
+          const C=new THREE.Vector3(d.ring*Math.cos(sg), 0, d.ring*Math.sin(sg)), Nn=new THREE.Vector3(Math.cos(sg),0,Math.sin(sg)), B=new THREE.Vector3(0,1,0);
+          const off=Nn.clone().multiplyScalar(Math.cos(ang)*d.radius).add(B.clone().multiplyScalar(Math.sin(ang)*d.radius));
+          const Lr=C.clone().add(off), Rr=C.clone().sub(off);
+          // hélice recta que sube desde abajo (mismo giro), para el nacimiento
+          const ys=d.riseFrom+i/(d.segments-1)*d.riseH, offS=new THREE.Vector3(Math.cos(ang)*d.radius,0,Math.sin(ang)*d.radius);
+          const Ls=new THREE.Vector3(0,ys,0).add(offS), Rs=new THREE.Vector3(0,ys,0).sub(offS);
+          const m=this.morph, e=m*m*(3-2*m);
+          // la curva se cierra desde la base: cada tramo se dobla con un leve retardo según su lugar
+          const ei=Math.min(1,Math.max(0,e*1.35-(i/d.segments)*0.35));
+          L=Ls.lerp(Lr,ei); R=Rs.lerp(Rr,ei);
+        } else {
+          const y=(i/(d.segments-1)-0.5)*H, ang=i*d.freq+t;
+          L=new THREE.Vector3(d.radius*Math.cos(ang), y, d.radius*Math.sin(ang));
+          R=new THREE.Vector3(d.radius*Math.cos(ang+Math.PI), y, d.radius*Math.sin(ang+Math.PI));
+        }
+        const beadL=this.leftBeads[i], beadR=this.rightBeads[i]; beadL.position.copy(L); beadR.position.copy(R);
+        const vis=Math.min(1,Math.max(0,this.reveal*(d.segments+6)-i)/6);   // crece de abajo hacia arriba con borde suave
+        beadL.visible=beadR.visible=vis>0.01; beadL.scale.setScalar(vis); beadR.scale.setScalar(vis);
+        const rung=this.rungs[i], mid=new THREE.Vector3().addVectors(L,R).multiplyScalar(0.5);
+        const dir=new THREE.Vector3().subVectors(R, L); const len=dir.length();
+        rung.scale.set(vis, len*vis, vis); rung.position.copy(mid); rung.visible=vis>0.01;
+        const quat=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), dir.clone().normalize());
+        rung.setRotationFromQuaternion(quat);
+
+        if(i>0){
+          const segL=this.leftPath.children[idxRailL++], segR=this.rightPath.children[idxRailR++];
+          const midL=new THREE.Vector3().addVectors(prevL,L).multiplyScalar(0.5);
+          const dirL=new THREE.Vector3().subVectors(L,prevL); const lenL=dirL.length();
+          segL.scale.set(1, lenL, 1); segL.position.copy(midL); segL.visible=vis>0.01;
+          segL.setRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), dirL.clone().normalize()));
+
+          const midR=new THREE.Vector3().addVectors(prevR,R).multiplyScalar(0.5);
+          const dirR=new THREE.Vector3().subVectors(R,prevR); const lenR=dirR.length();
+          segR.scale.set(1, lenR, 1); segR.position.copy(midR); segR.visible=vis>0.01;
+          segR.setRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), dirR.clone().normalize()));
+        }
+
+        if(d.ring>0 && i===d.segments-1){                                        // cierra el anillo uniendo el último tramo con el primero
+          const L0=this.leftBeads[0].position, R0=this.rightBeads[0].position, v0=this.morph>0.98?Math.min(1,Math.max(0,this.reveal*(d.segments+6)-d.segments)/6):0;
+          [[this.leftPath.children[idxRailL],L,L0],[this.rightPath.children[idxRailR],R,R0]].forEach(([sg2,a,b])=>{ if(!sg2) return; const m=new THREE.Vector3().addVectors(a,b).multiplyScalar(0.5), dv=new THREE.Vector3().subVectors(b,a);
+            sg2.scale.set(1,dv.length(),1); sg2.position.copy(m); sg2.visible=v0>0.01; sg2.setRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),dv.normalize())); });
+        }
+        prevL=L; prevR=R;
+        if(this.haloPos){ this.haloPos.set([L.x,L.y,L.z],i*6); this.haloPos.set([R.x,R.y,R.z],i*6+3); }
+      }
+    },
+    tick: function (time, delta) {
+      this.phase += (delta / 1000) * this.data.speed;
+      this.updatePositions(this.phase);
+      const s = 1.0 + 0.02 * Math.sin(this.phase * 0.8);
+      this.group.scale.set(s, s, s);
+      if(this.data.ring>0){ const m=this.morph; this.spinA+=(delta/1000)*this.data.spin*m; this.group.rotation.set(this.data.tilt*Math.PI/180*m,this.spinA,0);   // ya cerrado, el anillo se inclina hacia quien mira y gira lento alrededor del cerebro
+        const au=this.el.getObject3D('dnaAura'); if(au){ const d=this.data; au.scale.set(d.radius*7+(d.ring*2.9-d.radius*7)*m, d.riseH*1.1+(d.ring*1.5-d.riseH*1.1)*m, 1); au.position.y=(d.riseFrom+d.riseH/2)*(1-m); } }
+      else this.group.rotation.y += 0.005;
+      if(this.halo){
+        this.halo.geometry.attributes.position.needsUpdate=true;
+        this.halo.geometry.setDrawRange(0, Math.floor(this.reveal*this.data.segments)*2);
+        const r=this.el.sceneEl.renderer; if(r){ this.haloU.uViewH.value=r.getContext().drawingBufferHeight; }
+        const k=1.0+0.25*Math.sin(this.phase*0.8);
+        this.haloU.uStr.value=this.data.halo*k;
+        if(this.auraMat) this.auraMat.opacity=this.data.aura*k*this.reveal;
+      }
+    }
+  });
+  </script>
+
+  <!-- CHORAL-CHORD (acorde gregoriano) -->
+  <script>
+  AFRAME.registerComponent('choral-chord',{
+    schema:{
+      baseNote:{default:'D3'}, A4:{default:432}, gain:{default:0.22},
+      attack:{default:0.8}, decay:{default:2.0}, sustain:{default:0.6}, release:{default:2.5},
+      lpHz:{default:1800}, delayTime:{default:0.23}, feedback:{default:0.25}, detuneCents:{default:6}
+    },
+    init(){
+      this.ctx=null; this.master=null; this.env=null; this.lp=null; this.delay=null; this.fb=null;
+      this.voices=[]; this._armed=false;
+      this._semi=[0,7,12,15,19];
+      this._noteToHz=(name)=>{
+        const A4=this.data.A4;
+        const map={'C':0,'C#':1,'Db':1,'D':2,'D#':3,'Eb':3,'E':4,'F':5,'F#':6,'Gb':6,'G':7,'G#':8,'Ab':8,'A':9,'A#':10,'Bb':10,'B':11};
+        const m=name.match(/^([A-G][b#]?)(-?\d)$/); if(!m) return A4;
+        const n=map[m[1]], oct=parseInt(m[2]); const midi=n + (oct+1)*12;
+        const a4midi=9 + (4+1)*12;
+        return A4 * Math.pow(2,(midi-a4midi)/12);
+      };
+      const unlock=async()=>{await this._ensure(); this._arm();};
+      window.addEventListener('pointerdown',unlock,{once:true,passive:true});
+      document.addEventListener('visibilitychange',async()=>{ if(document.visibilityState==='visible'){await this._ensure();}});
+    },
+    async _ensure(){ if(!this.ctx){ const AC=window.AudioContext||window.webkitAudioContext; this.ctx=new AC(); } if(this.ctx.state!=='running'){ try{await this.ctx.resume();}catch(e){} } },
+    _arm(){
+      if(this._armed) return;
+      const t=this.ctx.currentTime, d=this.data;
+      this.master=this.ctx.createGain(); this.master.gain.setValueAtTime(0, t);
+      this.env=this.ctx.createGain(); this.env.gain.setValueAtTime(0, t);
+      this.lp=this.ctx.createBiquadFilter(); this.lp.type='lowpass'; this.lp.frequency.setValueAtTime(d.lpHz, t);
+      this.delay=this.ctx.createDelay(2.0); this.delay.delayTime.setValueAtTime(d.delayTime,t);
+      this.fb=this.ctx.createGain(); this.fb.gain.setValueAtTime(d.feedback,t);
+      this.env.connect(this.lp); this.lp.connect(this.delay); this.lp.connect(this.master);
+      this.delay.connect(this.fb); this.fb.connect(this.lp);
+      this.master.connect(this.ctx.destination);
+      const base=this._noteToHz(this.data.baseNote);
+      const makeVoice=(hz)=>{
+        const g=this.ctx.createGain(); g.gain.value=1.0; g.connect(this.env);
+        const o1=this.ctx.createOscillator(); o1.type='sine'; o1.frequency.value=hz; o1.detune.value= -this.data.detuneCents;
+        const o2=this.ctx.createOscillator(); o2.type='triangle'; o2.frequency.value=hz; o2.detune.value= +this.data.detuneCents;
+        o1.connect(g); o2.connect(g);
+        o1.start(); o2.start();
+        return {g,o1,o2};
+      };
+      this.voices=[];
+      for(const s of this._semi){
+        const hz= base*Math.pow(2,s/12);
+        this.voices.push(makeVoice(hz));
+      }
+      this._armed=true;
+    },
+    async gateOn(){ await this._ensure(); if(!this._armed) this._arm();
+      const t=this.ctx.currentTime, d=this.data;
+      this.env.gain.cancelScheduledValues(t);
+      this.master.gain.cancelScheduledValues(t);
+      this.env.gain.setValueAtTime(0.0001,t);
+      this.env.gain.linearRampToValueAtTime(d.gain, t + d.attack);
+      this.env.gain.linearRampToValueAtTime(d.gain*d.sustain, t + d.attack + d.decay);
+      this.master.gain.linearRampToValueAtTime(1.0, t + 0.2);
+    },
+    gateOff(){ /* ya no usamos para cortar al instante, queda por compatibilidad */ },
+    stopNow(){
+      try{
+        const now=this.ctx?.currentTime||0;
+        this.master?.gain?.cancelScheduledValues?.(now);
+        this.env?.gain?.cancelScheduledValues?.(now);
+        this.fb?.gain?.cancelScheduledValues?.(now);
+        this.master?.gain?.setValueAtTime?.(0, now);
+        this.env?.gain?.setValueAtTime?.(0.0001, now);
+        this.fb?.gain?.setValueAtTime?.(0, now);
+        this.voices.forEach(v=>{ try{v.o1.stop();v.o2.stop();}catch(e){} try{v.o1.disconnect();v.o2.disconnect();v.g.disconnect();}catch(e){} });
+        this.voices=[];
+        this.delay?.disconnect(); this.fb?.disconnect(); this.lp?.disconnect(); this.env?.disconnect(); this.master?.disconnect();
+      }catch(e){}
+      try{ this.ctx?.close?.(); }catch(e){}
+      this.ctx=null; this._armed=false;
+    }
+  });
+  </script>
+
+  <!-- CHOIR-VOICE (coro “ah”) -->
+  <script>
+  AFRAME.registerComponent('choir-voice',{
+    schema:{
+      gain:{default:0.12}, attack:{default:1.4}, decay:{default:2.8},
+      sustain:{default:0.7}, release:{default:3.6},
+      vowel:{default:'ah'}, voices:{default:6}, detuneCents:{default:14},
+      lfoRate:{default:0.22}, chorusMs:{default:24}, chorusDepth:{default:0.0035}
+    },
+    init(){
+      this.ctx=null; this.master=null; this.env=null; this.bus=null; this.vox=[];
+      this.lfo=null; this.lfoGain=null;
+      this.bp1=null; this.bp2=null; this.bp3=null;
+      this.delayL=null; this.delayR=null; this.split=null; this.merge=null;
+      this.mod=null; this.modGain=null; this.chLFO=null; this.chGain=null;
+      this._armed=false;
+      const unlock=async()=>{await this._ensure(); this._arm();};
+      window.addEventListener('pointerdown',unlock,{once:true,passive:true});
+      document.addEventListener('visibilitychange',async()=>{ if(document.visibilityState==='visible'){await this._ensure();}});
+    },
+    _formants(v){
+      if(v==='oh') return [[500,5],[800,5],[2700,6]];
+      if(v==='oo') return [[350,6],[700,6],[2400,7]];
+      return [[700,5],[1100,5],[2900,6]];
+    },
+    async _ensure(){ if(!this.ctx){ const AC=window.AudioContext||window.webkitAudioContext; this.ctx=new AC(); } if(this.ctx.state!=='running'){ try{await this.ctx.resume();}catch(e){} } },
+    _arm(){
+      if(this._armed) return;
+      const t=this.ctx.currentTime, d=this.data, ctx=this.ctx;
+      this.master=ctx.createGain(); this.master.gain.setValueAtTime(1, t);
+      this.env=ctx.createGain(); this.env.gain.setValueAtTime(0, t);
+      this.bus=ctx.createGain(); this.bus.gain.setValueAtTime(1, t);
+      const [f1,f2,f3]=this._formants(d.vowel);
+      const mkBP=(f,q)=>{ const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=f; bp.Q.value=q; return bp; };
+      this.bp1=mkBP(f1[0], f1[1]); this.bp2=mkBP(f2[0], f2[1]); this.bp3=mkBP(f3[0], f3[1]);
+      this.lfo=ctx.createOscillator(); this.lfo.type='sine'; this.lfo.frequency.value=d.lfoRate;
+      this.lfoGain=ctx.createGain(); this.lfoGain.gain.value=8;
+      this.delayL=ctx.createDelay(0.05); this.delayR=ctx.createDelay(0.05);
+      this.delayL.delayTime.value = d.chorusMs/1000;
+      this.delayR.delayTime.value = (d.chorusMs*1.35)/1000;
+      this.split=ctx.createChannelSplitter(2);
+      this.merge=ctx.createChannelMerger(2);
+      this.env.connect(this.bp1); this.bp1.connect(this.bp2); this.bp2.connect(this.bp3);
+      const preStereo=ctx.createGain(); this.bp3.connect(preStereo);
+      const stereo=ctx.createGain(); preStereo.connect(stereo);
+      stereo.connect(this.split);
+      this.split.connect(this.delayL,0);
+      this.split.connect(this.delayR,1);
+      this.delayL.connect(this.merge,0,0);
+      this.delayR.connect(this.merge,0,1);
+      this.merge.connect(this.bus);
+      this.bus.connect(this.master);
+      this.master.connect(ctx.destination);
+      const mkVoice=(cents)=>{
+        const g=ctx.createGain(); g.gain.value=1; g.connect(this.env);
+        const o1=ctx.createOscillator(); o1.type='sawtooth';
+        const o2=ctx.createOscillator(); o2.type='triangle';
+        o1.frequency.value=175; o2.frequency.value=175;
+        o1.detune.value=cents; o2.detune.value=cents*0.6;
+        this.lfo.connect(this.lfoGain);
+        this.lfoGain.connect(o1.detune); this.lfoGain.connect(o2.detune);
+        o1.connect(g); o2.connect(g);
+        o1.start(); o2.start();
+        return {g,o1,o2};
+      };
+      this.vox=[];
+      const spread=this.data.detuneCents, n=this.data.voices;
+      for(let i=0;i<n;i++){
+        const c = (i-(n-1)/2)*(spread/(n-1||1));
+        this.vox.push(mkVoice(c));
+      }
+      this.lfo.start();
+      this.mod=ctx.createOscillator(); this.mod.type='sine'; this.mod.frequency.value=0.09; this.modGain=ctx.createGain(); this.modGain.gain.value=80; this.mod.connect(this.modGain); this.modGain.connect(this.bp1.frequency); this.mod.start();
+      this.chLFO=ctx.createOscillator(); this.chLFO.type='sine'; this.chLFO.frequency.value=0.13; this.chGain=ctx.createGain(); this.chGain.gain.value=this.data.chorusDepth; this.chLFO.connect(this.chGain); this.chGain.connect(this.delayL.delayTime); this.chLFO.start();
+      this._armed=true;
+    },
+    async gateOn(){ await this._ensure(); if(!this._armed) this._arm();
+      const t=this.ctx.currentTime, d=this.data;
+      this.env.gain.cancelScheduledValues(t);
+      this.env.gain.setValueAtTime(0.0001,t);
+      this.env.gain.linearRampToValueAtTime(d.gain, t + d.attack);
+      this.env.gain.linearRampToValueAtTime(d.gain*d.sustain, t + d.attack + d.decay);
+    },
+    gateOff(){ /* dejamos para compatibilidad, no usamos si cortamos inmediato */ },
+    stopNow(){
+      try{
+        const now=this.ctx?.currentTime||0;
+        this.master?.gain?.cancelScheduledValues?.(now);
+        this.env?.gain?.cancelScheduledValues?.(now);
+        this.master?.gain?.setValueAtTime?.(0, now);
+        this.env?.gain?.setValueAtTime?.(0.0001, now);
+        this.vox.forEach(v=>{ try{v.o1.stop();v.o2.stop();}catch(e){} try{v.o1.disconnect();v.o2.disconnect();v.g.disconnect();}catch(e){} });
+        this.vox=[];
+        try{ this.lfo?.stop(); }catch(e){} this.lfo?.disconnect(); this.lfo=null;
+        try{ this.mod?.stop(); }catch(e){} this.mod?.disconnect(); this.mod=null;
+        try{ this.chLFO?.stop(); }catch(e){} this.chLFO?.disconnect(); this.chLFO=null;
+        this.modGain?.disconnect(); this.chGain?.disconnect();
+        this.delayL?.disconnect(); this.delayR?.disconnect();
+        this.merge?.disconnect(); this.split?.disconnect();
+        this.bp3?.disconnect(); this.bp2?.disconnect(); this.bp1?.disconnect();
+        this.env?.disconnect(); this.bus?.disconnect(); this.master?.disconnect();
+      }catch(e){}
+      try{ this.ctx?.close?.(); }catch(e){}
+      this.ctx=null;
+      this._armed=false;
+    }
+  });
+  </script>
+
+  <!-- texto de la pantalla de carga -->
+  <script>
+  (function(){
+    const H=window.HZ||{}, esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'<br>');
+    const HTML='<span class="lt-tit">'+esc(H.titulo)+'</span>'+(H.subtitulo?'<span class="lt-sub">'+esc(H.subtitulo)+'</span>':'')+
+      (H.frase?'<span class="lt-frase">'+esc(H.frase)+'</span>':'')+
+      '<span class="lt-guia"><svg class="lt-tel" viewBox="0 0 24 40" width="18" height="30"><rect x="2" y="2" width="20" height="36" rx="4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="33" r="1.6" fill="currentColor"/></svg>'+
+      '<span>'+esc(H.guia)+'</span>'+(H.guia2?'<span class="lt-guia2">'+esc(H.guia2)+'</span>':'')+'</span>';
+    const tinta=HZC((H.colores&&H.colores.tinta)||'#E2B865'), rgb=[1,3,5].map(i=>parseInt(tinta.slice(i,i+2),16)).join(',');
+    document.documentElement.style.setProperty('--hz-tinta',tinta); document.documentElement.style.setProperty('--hz-tinta-rgb',rgb);
+    const put=()=>{ const t=document.querySelector('.a-loader-title'); if(t && !t.dataset.ok){ t.innerHTML=HTML; t.dataset.ok=1; return true; } return false; };
+    const mo=new MutationObserver(()=>{ if(put()) mo.disconnect(); });
+    document.addEventListener('DOMContentLoaded',()=>{ if(!put()) mo.observe(document.body,{childList:true,subtree:true}); });
+  })();
+  </script>
+</head>
+
+<body>
+  <!-- Botón mini 🔊 -->
+  <button id="audio-btn" title="Habilitar audio">🔊</button>
+
+  <!-- ESCENA: se arma desde HZ.escenas (hz.config.js). Cada escena es un trigger, en el mismo orden en que se compiló targets.mind.
+       Con ?ver=N se abre la escena N sin cámara ni trigger (vista previa en la compu: arrastrar para girar, rueda para acercar). -->
+  <script>
+  (function(){
+    const H=window.HZ||{}, ESC=H.escenas||[];
+    const qs=new URLSearchParams(location.search), VER=qs.has('ver')?parseInt(qs.get('ver'),10):null;
+    const preview=VER!==null && !isNaN(VER);
+
+    // valores de cada efecto tal como estaban en The Connection; la config pisa lo que haga falta (escena.opciones[componente])
+    const BASE={
+      'condensacion':{},
+      'ripple-surface':{width:2.4,height:2.4,speed:0.14,damp:1.0,lineWidth:36,lineStrength:2.7},
+      'revela-bajo-agua':{after:6,maxTime:16,hold:6,vanish:4,rest:4},
+      'red-resplandor':{gold:'#1E9DB8',color:'#2FD8F2',hot:'#45E0FF'},
+      'niebla-v2':{count:46,opacity:0.16,drift:0.06},
+      'lluvia-v2':{count:2600,speed:3.0,len:0.2,width:0.010,slant:0.18,opacity:0.75},
+      'salpicaduras':{count:70,areaX:0.5,areaY:0.7,opacity:0.7},
+      'aparicion-bruma':{delay:16,gather:5,emerge:4},
+      'palabra-forma':{textWidth:0.8,textZ:0.06,rise:2.8,hold:1.6,morph:2.6,modelIn:1.6,pulse:0.35},
+      'choral-chord':{baseNote:'D3',A4:432,gain:0.22,attack:0.8,decay:2.0,sustain:0.6,release:2.5,lpHz:1800,delayTime:0.23,feedback:0.25,detuneCents:6},
+      'choir-voice':{gain:0.12,attack:1.4,decay:2.8,sustain:0.7,release:3.6,vowel:'ah',voices:6,detuneCents:14,lfoRate:0.22,chorusMs:24,chorusDepth:0.0035},
+      'genesis':{gather:4.5,modelIn:1.6,dnaDelay:0.6,dnaGrow:3.5},
+      'dna-helix':{ring:0.34,tilt:18,spin:0.12,segments:96,radius:0.045,freq:0.72,speed:0.7,bead:0.010,rung:0.003,glow:0.9,halo:0.8,haloSize:0.05,aura:0.3},
+      'brillo-malla':{color:'#FFB45A',intensity:0.55,halo:1.3,aura:0.55,pulse:0.25},
+      'construye-aristas':{build:3.2,pulseEvery:4.5,pulseDur:1.4},
+      'brillo-malla__aristas':{color:'#D49A2A',intensity:0.45,metalness:0.1,useMap:false,opaque:true,halo:0.9,haloSize:0.03,aura:0,pulse:0.2,period:4.1},
+      'plexus':{count:180,area:1.0,speed:0.18,maxDist:0.42,maxConn:4,thickness:1.2,opacity:1.0,showIds:true,idSize:0.028,idColor:'#FFFFFF',idOffsetX:0.02,idOffsetY:0.02,idOffsetZ:0}
+    };
+    const COLOR=/^(color|gold|hot|tint|light|idColor|rainGold|fogGold|splashGold|crossColor|neonColor|colorInner|colorOuter|palette)$/;
+    const attr=(name,e,extra)=>{
+      const o=Object.assign({},BASE[name]||{},extra||{},(e.opciones||{})[name]||{});
+      return Object.keys(o).map(k=>k+': '+(COLOR.test(k)?HZC(String(o[k])):o[k])).join('; ');
+    };
+    const esc=v=>String(v).replace(/"/g,'&quot;');
+    const giro='animation="property: rotation; to: 0 360 0; loop: true; dur: 8000; easing: linear"';
+    const vec=v=>{ const p=String(v).trim().split(/\s+/); return p.length===1?p[0]+' '+p[0]+' '+p[0]:p.join(' '); };
+    const tr=(e,p,s)=>'position="'+esc(e.posicion||p||'0 0 0')+'" scale="'+esc(vec(e.escala!=null?e.escala:(s!=null?s:1)))+'"';
+
+    let assets='', body='';
+    const marco=(e,i,str)=>e.marco===false?'':'<a-entity marco-luz="'+esc(attr('marco-luz',e,{src:i,strength:e.marco!=null?e.marco:(str==null?1:str),color:'#FFC46A',hot:'#FFF1C8'}))+'"></a-entity>';
+
+    const EFECTOS={
+      // 0 · la luz del foco → la materia se condensa en el modelo → rayos, polvo que sube y balanceo lento
+      condensacion:(e,i,M)=>{
+        const ex={}; if(e.foco){ const p=String(e.foco).trim().split(/\s+/).map(Number); ex.host=p.join(' '); ex.hostAuto=false; }
+        if(e.vidrio!=null) ex.vidrio=e.vidrio; if(e.metal!=null) ex.metal=e.metal; if(e.respaldo) ex.respaldo=e.respaldo;
+        return {anchor:'condensacion="'+esc(attr('condensacion',e,ex))+'"',
+          inner:marco(e,i,0.55)+'<a-gltf-model src="#'+M+'" '+tr(e,'0 -0.45 0.04',0.85)+'></a-gltf-model>'};
+      },
+      // 1 · agua: gotas por inclinación; bajo la superficie, una imagen que las gotas van develando
+      agua:(e,i)=>({anchor:'',
+        inner:marco(e,i,0.7)+'<a-entity id="hz-ripple-'+i+'" class="hz-ripple" position="0 0 0.06" rotation="-90 0 0" ripple-surface="'+esc(attr('ripple-surface',e))+'" tilt-drops visible="false"></a-entity>'+
+              (e.imagen?'<a-entity revela-bajo-agua="'+esc(attr('revela-bajo-agua',e,{src:e.imagen}))+'"></a-entity>':'')}),
+      // 2 · red: la luz dibuja la malla en ondas circulares desde el centro; nodos y pulsos
+      red:(e,i,M)=>{ const ex={}; if(e.malla) ex.mesh=e.malla; ex.cross=e.cruz||'';
+        return {anchor:'', inner:marco(e,i)+'<a-gltf-model src="#'+M+'" '+tr(e)+' red-resplandor="'+esc(attr('red-resplandor',e,ex))+'" '+(e.girar===false?'':giro)+'></a-gltf-model>'}; },
+      // 3 · lluvia y bruma; a los N segundos una imagen emerge de la niebla y la escena se entibia
+      lluvia:(e,i,M)=>({anchor:'',
+        inner:marco(e,i)+(M?'<a-gltf-model src="#'+M+'" '+tr(e)+'></a-gltf-model>':'')+
+          '<a-entity><a-entity niebla-v2="'+esc(attr('niebla-v2',e))+'"></a-entity><a-entity lluvia-v2="'+esc(attr('lluvia-v2',e))+'"></a-entity><a-entity salpicaduras="'+esc(attr('salpicaduras',e))+'"></a-entity></a-entity>'+
+          (e.imagen?'<a-entity aparicion-bruma="'+esc(attr('aparicion-bruma',e,{src:e.imagen}))+'"></a-entity>':'')}),
+      // 4 · partículas escriben una palabra y se transforman en el modelo; acorde y coro mientras el trigger está a la vista
+      palabra:(e,i,M)=>({anchor:'palabra-forma="'+esc(attr('palabra-forma',e,e.texto!=null?{text:e.texto}:{}))+'"',
+        inner:marco(e,i)+'<a-gltf-model src="#'+M+'" '+tr(e,'0 -0.02 0.12','2.0 2.6 2.09')+'></a-gltf-model>'+
+          (e.sonido===false?'':'<a-entity class="hz-chorus" choral-chord="'+esc(attr('choral-chord',e))+'"></a-entity><a-entity class="hz-choir" choir-voice="'+esc(attr('choir-voice',e))+'"></a-entity>')}),
+      // 5 · los puntos forman el modelo, aparece el modelo y crece la hélice que se cierra en aureola
+      genesis:(e,i,M)=>({anchor:'genesis="'+esc(attr('genesis',e))+'"',
+        inner:marco(e,i)+'<a-gltf-model src="#'+M+'" '+tr(e,'0 0 0',0.85)+' '+(e.girar===false?'':giro)+'></a-gltf-model>'+
+          (e.helice===false?'':'<a-entity position="0 0.03 0" dna-helix="'+esc(attr('dna-helix',e))+'"></a-entity>')}),
+      // 6 · una pieza brilla y late; otra se construye con luz desde la base al vértice; red de nodos numerados arriba
+      construccion:(e,i,M)=>{
+        const g=attr('brillo-malla',e,{mesh:e.brillo||'Infinity_loop'}), a=attr('construye-aristas',e,{mesh:e.aristas||'PIRAMIDE ABAJO.002'}), ga=attr('brillo-malla__aristas',e,{mesh:e.aristas||'PIRAMIDE ABAJO.002'});
+        return {anchor:'', inner:marco(e,i)+'<a-gltf-model src="#'+M+'" '+tr(e,'0 0 0',0.7)+' brillo-malla="'+esc(g)+'" construye-aristas="'+esc(a)+'" brillo-malla__aristas="'+esc(ga)+'" '+(e.girar===false?'':giro)+'></a-gltf-model>'+
+          (e.red===false?'':'<a-entity class="hz-plexus" position="0 0.9 0" visible="false" plexus="'+esc(attr('plexus',e))+'"></a-entity>')}; }
+    };
+
+    ESC.forEach((e,i)=>{
+      if(!e || (preview && i!==VER)) return;
+      const f=EFECTOS[e.efecto]; if(!f){ console.warn('[Hz] efecto desconocido:',e.efecto); return; }
+      const t=e.target!=null?e.target:i, M='hz-m'+i;
+      if(e.modelo) assets+='<a-asset-item id="'+M+'" src="'+esc(e.modelo)+'"></a-asset-item>';
+      const o=f(e,t,e.modelo?M:null);
+      const ancla=preview?'hz-ancla':'mindar-image-target="targetIndex: '+t+'"';
+      let card='';
+      if(preview && HZ_DATOS.miniaturas[t]){ const asp=(HZ_DATOS.aspectos&&HZ_DATOS.aspectos[t])||1; card='<a-plane src="'+HZ_DATOS.miniaturas[t]+'" width="1" height="'+asp+'" position="0 0 -0.001" material="shader: flat; transparent: false"></a-plane>'; }
+      else if(preview) card='<a-plane width="1" height="1" position="0 0 -0.001" material="shader: flat; color: #1a1a1a"></a-plane>';
+      body+='<a-entity id="hz-ancla-'+i+'" class="hz-ancla" data-efecto="'+e.efecto+'" '+ancla+' '+o.anchor+'>'+card+o.inner+'</a-entity>';
+    });
+
+    const fondo=HZC((H.colores&&H.colores.fondo)||'#0B0906'), puntos=HZC((H.colores&&H.colores.puntos)||'#D9A441');
+    const scene=
+      '<a-scene '+(preview?'background="color: #101113"':'mindar-image="imageTargetSrc: '+esc(H.mind||'./mindar/targets.mind')+'; maxTrack: 1; filterMinCF: 0.0001; filterBeta: 0.001; warmupTolerance: 3; missTolerance: 10"')+
+      ' color-space="sRGB" renderer="colorManagement: true; antialias: true" vr-mode-ui="enabled: false"'+
+      ' loading-screen="dotsColor: '+puntos+'; backgroundColor: '+fondo+'" device-orientation-permission-ui="enabled: false">'+
+      '<a-assets>'+assets+'</a-assets>'+
+      (preview?'<a-entity id="hz-cam" camera position="0 0 1.35" look-controls="enabled:false" wasd-controls="enabled:false"></a-entity><a-entity id="hz-giro" rotation="-15 0 0">'+body+'</a-entity>'
+              :'<a-camera position="0 0 0" look-controls="enabled:false"></a-camera>'+body)+
+      '<a-entity id="pulse-holder"></a-entity></a-scene>';
+    document.body.insertAdjacentHTML('afterbegin',scene);
+
+    if(preview){
+      // la vista previa: el trigger "aparece" apenas carga la escena
+      const sc=document.querySelector('a-scene'), giroEl=document.getElementById('hz-giro'), cam=document.getElementById('hz-cam');
+      sc.addEventListener('loaded',()=>setTimeout(()=>document.querySelectorAll('.hz-ancla').forEach(a=>a.emit('targetFound')),300));
+      let drag=null, rx=-15, ry=0, z=1.35;
+      window.addEventListener('pointerdown',e=>{ drag={x:e.clientX,y:e.clientY,rx,ry}; });
+      window.addEventListener('pointerup',()=>drag=null);
+      window.addEventListener('pointermove',e=>{ if(!drag) return; ry=drag.ry+(e.clientX-drag.x)*0.4; rx=Math.max(-89,Math.min(89,drag.rx+(e.clientY-drag.y)*0.4)); giroEl.setAttribute('rotation',rx+' '+ry+' 0'); });
+      window.addEventListener('wheel',e=>{ z=Math.max(0.5,Math.min(6,z*(1+e.deltaY*0.001))); cam.setAttribute('position','0 0 '+z); },{passive:true});
+    }
+  })();
+  </script>
+
+  <!-- Eventos -->
+  <script>
+    // agua: la onda aparece con el trigger y arranca con una gota en el centro
+    document.querySelectorAll('.hz-ancla[data-efecto="agua"]').forEach(a=>{
+      const ripple=a.querySelector('.hz-ripple');
+      a.addEventListener('targetFound',()=>{ ripple.setAttribute('visible',true); const r=ripple.components['ripple-surface']; r?.reset(); r?.addDrop(0.5,0.5); });
+      a.addEventListener('targetLost', ()=> ripple.setAttribute('visible',false));
+    });
+    // construcción: la red de nodos solo mientras se ve el trigger
+    document.querySelectorAll('.hz-ancla[data-efecto="construccion"]').forEach(a=>{
+      const p=a.querySelector('.hz-plexus'); if(!p) return;
+      a.addEventListener('targetFound',()=>p.setAttribute('visible',true));
+      a.addEventListener('targetLost', ()=>p.setAttribute('visible',false));
+    });
+    // palabra: acorde + coro mientras el trigger está a la vista
+    const voces=()=>[...document.querySelectorAll('.hz-chorus')].map(e=>e.components['choral-chord']).concat([...document.querySelectorAll('.hz-choir')].map(e=>e.components['choir-voice'])).filter(Boolean);
+    document.querySelectorAll('.hz-ancla[data-efecto="palabra"]').forEach(a=>{
+      const vs=()=>[a.querySelector('.hz-chorus')?.components['choral-chord'],a.querySelector('.hz-choir')?.components['choir-voice']].filter(Boolean);
+      a.addEventListener('targetFound',async ()=>{ for(const v of vs()){ try{ await v._ensure(); v._arm(); v.gateOn(); }catch(e){} } });
+      // CORTAR YA MISMO — cerrar contextos para evitar colas del delay
+      a.addEventListener('targetLost',()=>vs().forEach(v=>v.stopNow()));
+    });
+    const armar=async ()=>{ for(const v of voces()){ try{ await v._ensure(); v._arm(); }catch(e){} } document.getElementById('audio-btn')?.classList.add('hidden'); };
+    // Botón 🔊: desbloquea los motores de audio
+    document.getElementById('audio-btn').addEventListener('click',armar,{passive:true});
+    // Primer click global también arma y oculta el botón
+    window.addEventListener('click',armar,{once:true,passive:true});
+    if(!document.querySelector('.hz-chorus,.hz-choir')) document.getElementById('audio-btn').classList.add('hidden');
+    // Failsafe: si la página va a 2º plano, cortar todo audio
+    document.addEventListener('visibilitychange',()=>{ if(document.hidden) voces().forEach(v=>v.stopNow()); });
+
+    window.addEventListener('orientationchange', ()=>location.reload(), {passive:true});
+  </script>
+
+</body>
+</html>
