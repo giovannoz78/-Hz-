@@ -27,40 +27,35 @@ window.HZ = {
 
   escenas: [
 
-    // 0 · CONDENSACIÓN — un punto de luz, la materia se condensa en el modelo, rayos y polvo que sube
-    { efecto: 'condensacion', modelo: './assets/0.glb',
-      posicion: '0 -0.45 0.15', escala: 0.85, marco: 0.55
-      // foco: '0 0.5 0',       // dónde nace la luz, en coordenadas del modelo (sin esto se ubica solo)
-      // vidrio: 'nombre',      // malla que se trata como superficie iluminada
-      // metal: '*',            // mallas que se vuelven metal ('*' = todas)
-    },
+    // 0 · MICELIO — hifas que nacen de unas esporas, crecen ramificándose sobre la página y después las recorren pulsos de luz
+    //     ajustes: opciones: { 'micelio': { esporas: 5, crece: 14, rama: 0.045, radio: 0.46 } }
+    { efecto: 'micelio', marco: 0.55 },
 
-    // 1 · AGUA — ondas que caen con la inclinación del teléfono; las gotas develan una imagen bajo la superficie
-    //     imagen: un PNG/WebP propio, o una generativa: 'gen:interferencia' · 'gen:anillos' · 'gen:moire'
-    { efecto: 'agua', imagen: 'gen:interferencia', marco: 0.7 },
+    // 1 · FUEGO — dos pedernales chocan, saltan chispas, una prende la yesca, aparece la brasa y crece la llama
+    //     ajustes: opciones: { 'fuego': { golpes: 5, cada: 1.25, llama: 12, chispas: 90, escala: 1 } }
+    //     (el efecto anterior, agua, sigue disponible: { efecto: 'agua', imagen: 'gen:interferencia' })
+    { efecto: 'fuego', marco: 0.6 },
 
-    // 2 · RED — la luz dibuja la malla en ondas circulares desde el centro, nodos y pulsos
-    { efecto: 'red', modelo: './assets/2.glb', posicion: '0 0 0.3',
-      malla: 'red',        // nombre de la malla de líneas (si no existe, usa la más grande)
-      cruz: ''             // nodo que recibe una luz propia ('' = ninguno)
-    },
+    // 2 · MERCURIO — gotas de metal líquido que se atraen y se funden; al quedar una sola, estalla y vuelve a empezar
+    //     ajustes: opciones: { 'mercurio': { gotas: 14, tamano: 0.045, atrae: 0.012, queda: 5 } }
+    //     (el efecto anterior, red, sigue disponible: { efecto: 'red', modelo: './assets/2.glb', malla: 'red' })
+    { efecto: 'mercurio', marco: 0.6 },
 
-    // 3 · LLUVIA — lluvia, bruma y salpicaduras; a los 16 s una imagen emerge de la niebla
-    { efecto: 'lluvia', modelo: './assets/3.glb', posicion: '0 0 0.01', imagen: 'gen:anillos' },
+    // 3 · ESTALAGMITAS — suben desde la página por capas mientras el agua gotea sobre sus puntas
+    //     ajustes: opciones: { 'espeleotema': { cantidad: 9, alto: 0.32, crece: 16 } }
+    { efecto: 'estalagmitas', marco: 0.6 },
 
-    // 4 · PALABRA — las partículas escriben el texto y se transforman en el modelo; acorde y coro
-    { efecto: 'palabra', modelo: './assets/4.glb', texto: '[Hz]',
-      posicion: '0 0 0.15', escala: 1 },
+    // 4 · ESTALACTITAS — cuelgan de un techo invisible y bajan hacia la página; en cada punta se forma una gota que cae
+    //     ajustes: opciones: { 'espeleotema': { cantidad: 9, alto: 0.32, techo: 0.55, crece: 16 } }
+    { efecto: 'estalactitas', marco: 0.6 },
 
-    // 5 · GÉNESIS — los puntos forman el modelo, aparece y crece la hélice que se cierra en aureola
-    { efecto: 'genesis', modelo: './assets/5.glb', posicion: '0 0 0.2', escala: 0.85 },
+    // 5 · SINAPSIS — neuronas suspendidas; el impulso viaja por el axón, destella en la sinapsis y la siguiente dispara
+    //     ajustes: opciones: { 'sinapsis': { neuronas: 22, viaje: 0.9 } }
+    { efecto: 'sinapsis', marco: 0.6 },
 
-    // 6 · CONSTRUCCIÓN — una pieza brilla y late, otra se construye con luz; red de nodos arriba
-    { efecto: 'construccion', modelo: './assets/6.glb', posicion: '0 -0.1 0.2', escala: 0.8,
-      brillo: 'brillo',      // malla que brilla ('*' = todas)
-      aristas: 'aristas',    // malla que se construye desde la base (si no existe, usa la más grande)
-      opciones: { 'brillo-malla__aristas': { intensity: 0.12, halo: 0 } }   // en blanco y negro, menos brillo propio deja ver el volumen
-    }
+    // 6 · AGUJERO NEGRO — horizonte de sucesos, anillo de fotones, disco de acreción en espiral y estrellas que caen
+    //     ajustes: opciones: { 'hoyo-negro': { radio: 0.06, disco: 0.36, inclina: 12, estrellas: 1600 } }
+    { efecto: 'hoyo-negro', marco: 0.6 }
 
   ]
 };
