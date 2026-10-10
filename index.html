@@ -3179,10 +3179,18 @@
         let rt=null;
         const u={tScene:{value:null},uPx:{value:new T.Vector2()},uFrio:{value:new T.Color(P.frio||'#10F0B8')},uCalido:{value:new T.Color(P.calido||'#FF2236')},
           uHalo:{value:P.halo==null?1.0:P.halo},uContraste:{value:P.contraste||1.0}};
+        // mapas de color: de lo tenue a lo intenso
+        const MAPAS={
+          termico:['#1f4fe0','#2ec4ef','#4fd94a','#f6e23a','#ec4a1c','#a3121a'],   // imagen satelital infrarroja: azul, cian, verde, amarillo, rojo, rojo oscuro en el núcleo
+          inferno:['#120428','#3d0f73','#8f1f8f','#dc3a3a','#f7901e','#fde65e'],
+          arbol:  ['#0f243b','#2e6496','#4d9ecc','#5ccccc','#70ebab','#8cf08a'],
+          montana:['#020930','#123355','#225173','#784371','#a64071','#e74e7c']};
+        const M=(Array.isArray(P.mapa)?P.mapa:MAPAS[P.mapa||'termico'])||MAPAS.termico;
+        M.forEach((h,i)=>{ u['uC'+i]={value:new T.Color(h)}; });
         const q=new T.Mesh(new T.PlaneGeometry(2,2),new T.ShaderMaterial({uniforms:u,depthTest:false,depthWrite:false,transparent:true,
           blending:T.CustomBlending,blendEquation:T.AddEquation,blendSrc:T.OneFactor,blendDst:T.OneMinusSrcAlphaFactor,blendSrcAlpha:T.OneFactor,blendDstAlpha:T.OneMinusSrcAlphaFactor,
           vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }',
-          fragmentShader:`precision highp float; varying vec2 vUv; uniform sampler2D tScene; uniform vec2 uPx; uniform vec3 uFrio,uCalido; uniform float uHalo,uContraste;
+          fragmentShader:`precision highp float; varying vec2 vUv; uniform sampler2D tScene; uniform vec2 uPx; uniform vec3 uFrio,uCalido,uC0,uC1,uC2,uC3,uC4,uC5; uniform float uHalo,uContraste;
             float lum(vec3 c){ return max(c.r,max(c.g,c.b)); }
             void main(){
               vec4 s=texture2D(tScene,vUv); float L=pow(clamp(lum(s.rgb),0.0,1.0),1.0/uContraste);
@@ -3191,14 +3199,14 @@
               for(int i=0;i<12;i++){ float a=float(i)*0.5236; vec2 d=vec2(cos(a),sin(a));
                 h+=lum(texture2D(tScene,vUv+d*uPx*6.0).rgb)*0.5+lum(texture2D(tScene,vUv+d*uPx*16.0).rgb)*0.5; }
               h/=12.0;
-              // degradé del árbol: azul acero en lo tenue → cian → verde menta en lo intenso (nunca blanco)
-              vec3 c0=vec3(0.06,0.14,0.23), c1=vec3(0.18,0.39,0.59), c2=vec3(0.30,0.62,0.80), c3=vec3(0.36,0.80,0.80), c4=vec3(0.44,0.92,0.67), c5=vec3(0.55,0.94,0.54);
+              // degradé por brillo según el mapa elegido en hz.config.js (térmico, árbol o montaña)
+              vec3 c0=uC0,c1=uC1,c2=uC2,c3=uC3,c4=uC4,c5=uC5;
               float k=clamp(pow(L,0.7)*1.2,0.0,1.0);
               vec3 tono=k<0.2?mix(c0,c1,k/0.2):k<0.4?mix(c1,c2,(k-0.2)/0.2):k<0.6?mix(c2,c3,(k-0.4)/0.2):k<0.8?mix(c3,c4,(k-0.6)/0.2):mix(c4,c5,(k-0.8)/0.2);
               float a=smoothstep(0.03,0.22,L);
-              // glow suave: un velo verde oscuro alrededor de los trazos, como en la referencia; no suma luz sobre el trazo
+              // velo suave alrededor de los trazos, con los tonos bajos del mismo mapa; no suma luz sobre el trazo
               float hk=clamp(pow(h,0.7)*1.3,0.0,1.0);
-              vec3 tg=mix(vec3(0.05,0.2,0.25),vec3(0.12,0.42,0.3),hk);
+              vec3 tg=mix(c0,c2,hk);
               float ag=clamp(hk*uHalo*0.55,0.0,0.6)*(1.0-a);
               vec3 col=tono*a+tg*ag;
               gl_FragColor=vec4(col,clamp(a+ag,0.0,1.0)); }`}));

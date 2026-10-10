@@ -19,11 +19,14 @@ window.HZ = {
   // archivo de triggers que genera preparar.html
   mind: './mindar/targets.mind',
 
-  // paleta. modo 'glow': toda la imagen 3D se colorea por su brillo como el árbol de referencia:
-  // azul acero en lo tenue, cian en lo medio, verde menta en lo intenso (nunca blanco), con un velo verde suave alrededor.
-  //   halo: cuánto velo (0 = nada, 1 = suave, 1.5 = más) · camara: false deja la imagen de la cámara en color
+  // paleta. modo 'glow': toda la imagen 3D se colorea por su brillo con un mapa de color.
+  //   mapa: 'termico' (imagen satelital infrarroja: azul, cian, verde, amarillo, rojo, rojo oscuro en lo más intenso)
+  //         'inferno' (violeta, magenta, rojo, naranja, amarillo)
+  //         'arbol' (azul acero, cian, verde menta) · 'montana' (azul noche, petróleo, violeta, rosa)
+  //         o una lista propia de 6 colores, de lo tenue a lo intenso: ['#...', ... ]
+  //   halo: velo suave alrededor (0 = nada, 1 = suave) · camara: false deja la imagen de la cámara en color
   // modo 'bn' vuelve al blanco y negro puro.
-  paleta:  { modo: 'glow', halo: 1.0, contraste: 1.0, camara: true },
+  paleta:  { modo: 'glow', mapa: 'termico', halo: 1.0, contraste: 1.0, camara: true },
   colores: { tinta: '#FFFFFF', fondo: '#000000', puntos: '#FFFFFF' },   // textos y puntitos de la pantalla de carga
 
   escenas: [
