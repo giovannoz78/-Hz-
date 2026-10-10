@@ -20,10 +20,10 @@ window.HZ = {
   mind: './mindar/targets.mind',
 
   // paleta. modo 'glow': toda la imagen 3D se colorea por su brillo con un degradé de capas de montaña:
-  // azul noche en lo tenue, petróleo, violeta y rosa en lo más intenso (nunca blanco), con un halo violeta suave.
-  //   halo: cuánto resplandor (0 = nada, 1 = normal) · camara: false deja la imagen de la cámara en color
+  // azul noche en lo tenue, petróleo, violeta y rosa en lo más intenso (nunca blanco), con un resplandor contenido del mismo degradé.
+  //   halo: cuánto resplandor (0 = plano y mate, 1 = contenido, 1.5 = intenso) · camara: false deja la imagen de la cámara en color
   // modo 'bn' vuelve al blanco y negro puro.
-  paleta:  { modo: 'glow', halo: 0.6, contraste: 1.0, camara: true },
+  paleta:  { modo: 'glow', halo: 1.0, contraste: 1.0, camara: true },
   colores: { tinta: '#FFFFFF', fondo: '#000000', puntos: '#FFFFFF' },   // textos y puntitos de la pantalla de carga
 
   escenas: [

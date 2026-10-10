@@ -3189,17 +3189,21 @@
               // halo: brillo de los alrededores en dos radios
               float h=0.0;
               for(int i=0;i<12;i++){ float a=float(i)*0.5236; vec2 d=vec2(cos(a),sin(a));
-                h+=lum(texture2D(tScene,vUv+d*uPx*5.0).rgb)*0.6+lum(texture2D(tScene,vUv+d*uPx*13.0).rgb)*0.4; }
+                h+=lum(texture2D(tScene,vUv+d*uPx*6.0).rgb)*0.5+lum(texture2D(tScene,vUv+d*uPx*16.0).rgb)*0.5; }
               h/=12.0;
               // degradé por brillo, como capas de montaña: azul noche → petróleo → violeta → rosa (nunca blanco)
               vec3 c0=vec3(0.008,0.035,0.19), c1=vec3(0.07,0.2,0.33), c2=vec3(0.13,0.32,0.45), c3=vec3(0.47,0.26,0.44), c4=vec3(0.65,0.25,0.44), c5=vec3(0.91,0.31,0.49);
-              float k=clamp(pow(L,0.6)*1.25,0.0,1.0);   // más arriba en el degradé: domina violeta y rosa
+              // plano y mate, como capas de papel: el color sale del degradé, nunca se suma luz encima
+              float k=clamp(pow(L,0.75)*1.15,0.0,1.0);
               vec3 tono=k<0.2?mix(c0,c1,k/0.2):k<0.4?mix(c1,c2,(k-0.2)/0.2):k<0.6?mix(c2,c3,(k-0.4)/0.2):k<0.8?mix(c3,c4,(k-0.6)/0.2):mix(c4,c5,(k-0.8)/0.2);
-              tono=pow(tono,vec3(2.2));                                                      // a lineal: el paso final lo vuelve a sRGB
-              vec3 col=tono*smoothstep(0.0,0.06,L)*1.6 + pow(c4,vec3(2.2))*h*uHalo*0.9*(1.0-smoothstep(0.1,0.6,L));
-              col=pow(col,vec3(1.0/2.2));
-              float a=max(s.a,0.0);
-              gl_FragColor=vec4(col,max(a,smoothstep(0.0,0.05,L))); }`}));
+              float a=smoothstep(0.03,0.28,L)*0.95;
+              // glow contenido: resplandor del mismo degradé alrededor de los trazos, nunca más claro que el color más alto (rosa)
+              float hk=clamp(pow(h,0.75)*1.4,0.0,1.0);
+              vec3 tg=hk<0.35?mix(c1,c3,hk/0.35):mix(c3,c5,(hk-0.35)/0.65);
+              float ag=clamp(pow(h,0.8)*uHalo*0.9,0.0,0.75)*(1.0-a*0.85);
+              vec3 col=tono*a+tg*ag;
+              col=min(col,c5);
+              gl_FragColor=vec4(col,clamp(a+ag,0.0,1.0)); }`}));
         const qs=new T.Scene(); qs.add(q); const qc=new T.OrthographicCamera(-1,1,1,-1,0,1);
         r.render=function(scene,camera){
           if(scene!==sc.object3D) return orig(scene,camera);
