@@ -42,9 +42,11 @@ window.HZ = {
     //     (el efecto anterior, red, sigue disponible: { efecto: 'red', modelo: './assets/2.glb', malla: 'red' })
     { efecto: 'mercurio', marco: 0.6 },
 
-    // 3 · ESTALAGMITAS — suben desde la página por capas mientras el agua gotea sobre sus puntas
-    //     ajustes: opciones: { 'espeleotema': { cantidad: 9, alto: 0.32, crece: 16 } }
-    { efecto: 'estalagmitas', marco: 0.6 },
+    // 3 · ACRECIÓN — el shader "Accretion" de @XorDev (shadertoy.com/view/WcKXDV) sobre la página, en grises
+    //     ajustes: opciones: { 'acrecion': { tamano: 1, escala: 1, velocidad: 1, pasos: 20, brillo: 1 } }
+    //     (pasos baja el costo en teléfonos lentos: 14 o 16 se ve casi igual)
+    //     (el efecto anterior sigue disponible: { efecto: 'estalagmitas' })
+    { efecto: 'acrecion', marco: 0.5 },
 
     // 4 · ESTALACTITAS — cuelgan de un techo invisible y bajan hacia la página; en cada punta se forma una gota que cae
     //     ajustes: opciones: { 'espeleotema': { cantidad: 9, alto: 0.32, techo: 0.55, crece: 16 } }

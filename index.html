@@ -2241,6 +2241,65 @@
 </head>
 
 <body>
+  <!-- ACRECIÓN: el shader "Accretion" de @XorDev (shadertoy.com/view/WcKXDV), en la versión comentada por
+       Juan Carlos Ponce Campuzano, llevado a un plano sobre la página, en grises y con bordes disueltos. -->
+  <script>
+  AFRAME.registerComponent('acrecion',{
+    schema:{ tamano:{default:1.0}, z:{default:0.01}, escala:{default:1.0}, velocidad:{default:1.0}, pasos:{default:20}, brillo:{default:1.0} },
+    init(){
+      const T=AFRAME.THREE,d=this.data;
+      this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
+      const LUZ={blending:T.CustomBlending,blendEquation:T.AddEquation,blendSrc:T.OneFactor,blendDst:T.OneFactor,blendSrcAlpha:T.ZeroFactor,blendDstAlpha:T.OneFactor};
+      this.u={iTime:{value:0},uFade:{value:0},uEscala:{value:d.escala},uBrillo:{value:d.brillo}};
+      const PASOS=Math.max(8,Math.min(32,Math.round(d.pasos)));
+      this.mesh=new T.Mesh(new T.PlaneGeometry(d.tamano,d.tamano),new T.ShaderMaterial(Object.assign({uniforms:this.u,transparent:true,depthWrite:false,
+        vertexShader:`varying vec2 vTexCoord; void main(){ vTexCoord=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+        fragmentShader:`precision highp float;
+          uniform float iTime,uFade,uEscala,uBrillo; varying vec2 vTexCoord;
+          float tanh_approx(float x){ x=clamp(x,-3.0,3.0); float x2=x*x; return x*(27.0+x2)/(27.0+9.0*x2); }
+          void main(){
+            vec2 uv=(vTexCoord*2.0-1.0)*uEscala;
+            const int MAX_STEPS=${PASOS}; const int NOISE_ITERATIONS=7;
+            const float INITIAL_OFFSET=0.1; const float RADIAL_SCALE=5.0; const float DEPTH_ATTENUATION=0.2;
+            float rayDepth=0.0, stepDistance=0.0; vec4 finalColor=vec4(0.0);
+            vec3 rayDirection=normalize(vec3(uv,1.0));
+            for(int step=0; step<MAX_STEPS; step++){
+              vec3 position=rayDepth*rayDirection+INITIAL_OFFSET;
+              float angle=atan(position.y/0.2,position.x)*2.0;
+              float radius=length(position.xy)-RADIAL_SCALE-rayDepth*DEPTH_ATTENUATION;
+              float height=position.z/3.0;
+              position=vec3(angle,height,radius);
+              for(int noiseStep=1; noiseStep<=NOISE_ITERATIONS; noiseStep++){
+                float noiseScale=float(noiseStep);
+                vec3 noiseInput=position.yzx*noiseScale+iTime+0.3*float(step);
+                position+=sin(noiseInput)/noiseScale; }
+              vec3 surfacePattern=0.4*cos(position)-0.4;
+              stepDistance=length(vec4(surfacePattern,position.z));
+              rayDepth+=stepDistance;
+              float colorPhase=position.x+float(step)*0.4+rayDepth;
+              finalColor+=(1.0+cos(colorPhase+vec4(6.0,1.0,9.0,0.0)))/stepDistance;
+            }
+            vec4 c=finalColor*finalColor/400.0;
+            vec3 rgb=vec3(tanh_approx(c.r),tanh_approx(c.g),tanh_approx(c.b));
+            float y=dot(rgb,vec3(0.2126,0.7152,0.0722))*uBrillo;                 // en grises
+            float borde=1.0-smoothstep(0.62,0.98,length(vTexCoord*2.0-1.0));     // se disuelve en círculo, sin bordes de plano
+            float a=clamp(y,0.0,1.0)*borde*uFade;
+            gl_FragColor=vec4(vec3(a),0.0); }`},LUZ)));
+      this.mesh.position.z=d.z; this.mesh.renderOrder=40; this.mesh.visible=false; this.el.object3D.add(this.mesh);
+      this.t=0; this.running=false;
+      this.anchor.addEventListener('targetFound',()=>this.start());
+      this.anchor.addEventListener('targetLost',()=>{ clearTimeout(this._lostT); this._lostT=setTimeout(()=>this.reset(),2000); });
+    },
+    start(){ clearTimeout(this._lostT); if(this.running) return; this.running=true; this.t=0; this.mesh.visible=true; },
+    reset(){ this.running=false; this.mesh.visible=false; },
+    tick(t,dt){
+      if(!this.running){ if(this.anchor.components&&this.anchor.components['mindar-image-target']&&this.anchor.object3D.visible) this.start(); if(!this.running) return; }
+      const st=Math.min(0.05,(dt||16)/1000); this.t+=st;
+      this.u.iTime.value=this.t*this.data.velocidad; this.u.uFade.value=Math.min(1,this.t/2);
+    }
+  });
+  </script>
+
   <!-- ESPEJO ("así arriba, como abajo"): una red de nodos flota sobre la página y su reflejo vive debajo;
        la página es el horizonte. Hilos verticales unen cada nodo con su reflejo y un flujo de reloj de arena
        baja del mundo de arriba al de abajo. Tocar la pantalla suma nodos. -->
@@ -2962,6 +3021,8 @@
 
     const EFECTOS={
       // 0 · la luz del foco → la materia se condensa en el modelo → rayos, polvo que sube y balanceo lento
+      // acrecion · shader "Accretion" de @XorDev sobre la página
+      acrecion:(e,i)=>({anchor:'', inner:marco(e,i,0.5)+'<a-entity acrecion="'+esc(attr('acrecion',e))+'"></a-entity>'}),
       // espejo · así arriba, como abajo: red de nodos sobre la página y su reflejo debajo
       espejo:(e,i)=>({anchor:'', inner:marco(e,i,0.6)+'<a-entity espejo="'+esc(attr('espejo',e))+'"></a-entity>'}),
       // sinapsis · neuronas que disparan en cascada
