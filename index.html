@@ -6,19 +6,19 @@
   <title>[Hz]</title>
 
   <!-- lo reemplazable vive afuera: textos, paleta y escenas en hz.config.js; marcos y formas en hz-datos.js (lo genera preparar.html) -->
-  <script src="./hz.config.js"></script>
-  <script src="./hz-datos.js"></script>
+  <!-- se piden siempre frescos: el teléfono no puede quedarse con una configuración vieja guardada en caché -->
+  <script>(function(){ var v=Date.now(); document.write('<script src="./hz.config.js?v='+v+'"><\/script><script src="./hz-datos.js?v='+v+'"><\/script>'); })();</script>
   <script>
   window.HZ=window.HZ||{}; window.HZ_DATOS=window.HZ_DATOS||{}; ['formas','marcos','miniaturas'].forEach(k=>{ if(!HZ_DATOS[k]) HZ_DATOS[k]={}; });
   // PALETA: todos los colores del motor pasan por HZC(). Los tonos dorados (matiz 12°-62°) se llevan al matiz de HZ.paleta;
   // el resto (cian del agua, blancos, negros) queda igual. matiz 40 + saturacion 1 = el oro original.
   window.HZC=function(c){
-    const P=window.HZ.paleta||{}; if(P.modo!=='bn' && P.matiz==null) return c;
+    const P=window.HZ.paleta||{}; if(P.modo!=='bn' && P.modo!=='glow' && P.matiz==null) return c;
     if(typeof c==='string' && c.indexOf(',')>=0) return c.split(',').map(x=>HZC(x.trim())).join(',');
     const num=typeof c==='number', hex=num?('#'+c.toString(16).padStart(6,'0')):String(c);
     const m=/^#([0-9a-f]{6})$/i.exec(hex); if(!m) return c;
     let r=parseInt(m[1].slice(0,2),16)/255,g=parseInt(m[1].slice(2,4),16)/255,b=parseInt(m[1].slice(4,6),16)/255;
-    if(P.modo==='bn'){                                                       // blanco y negro: cada color pasa a su gris de igual luminancia
+    if(P.modo==='bn'||P.modo==='glow'){                                      // blanco y negro (y base del glow): cada color pasa a su gris de igual luminancia
       const y=Math.round(Math.min(1,Math.pow(0.2126*r+0.7152*g+0.0722*b,1/(P.contraste||1)))*255), o=(y<<16)|(y<<8)|y;
       return num?o:'#'+o.toString(16).padStart(6,'0'); }
     const mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2; let h=0,sa=0;
@@ -32,9 +32,9 @@
     return num?out:'#'+out.toString(16).padStart(6,'0');
   };
   // BLANCO Y NEGRO garantizado: también las texturas de los GLB, los colores de vértice y los tonos fijos de los shaders
-  (function(){ const P=window.HZ.paleta||{}; if(P.modo!=='bn') return;
+  (function(){ const P=window.HZ.paleta||{}; if(P.modo!=='bn'&&P.modo!=='glow') return;
     const st=document.createElement('style');
-    st.textContent='canvas.a-canvas{filter:grayscale(1)'+(P.contraste&&P.contraste!==1?' contrast('+P.contraste+')':'')+'}'+(P.camara!==false?'video{filter:grayscale(1)}':'');
+    st.textContent=(P.modo==='bn'?'canvas.a-canvas{filter:grayscale(1)'+(P.contraste&&P.contraste!==1?' contrast('+P.contraste+')':'')+'}':'')+(P.camara!==false?'video{filter:grayscale(1)'+(P.modo==='glow'?' brightness(0.8)':'')+'}':'');
     document.head.appendChild(st); })();
   // IMÁGENES GENERATIVAS: 'gen:interferencia' (dos fuentes de onda), 'gen:anillos' (anillos concéntricos que se quiebran), 'gen:moire' (dos tramas que se cruzan)
   window.hzGenerativa=function(spec){
@@ -2241,6 +2241,77 @@
 </head>
 
 <body>
+  <!-- ESPIRAL: esfera de vidrio con espirales adentro, del shader de Matthias Hurrle (@atzedent) para el
+       Creative Coding Challenge "Spiral" (openprocessing.org/curation/78544). Va en un plano que mira a la cámara,
+       flotando sobre la página; la intersección con la esfera se calcula directo en lugar de buscarla en 400 pasos. -->
+  <script>
+  AFRAME.registerComponent('espiral',{
+    schema:{ tamano:{default:0.62}, z:{default:0.24}, pasos:{default:60}, velocidad:{default:1.0} },
+    init(){
+      const T=AFRAME.THREE,d=this.data;
+      this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
+      const PASOS=Math.max(20,Math.min(80,Math.round(d.pasos)));
+      this.u={time:{value:0},uFade:{value:0}};
+      this.mesh=new T.Mesh(new T.PlaneGeometry(d.tamano,d.tamano),new T.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:false,
+        blending:T.CustomBlending,blendEquation:T.AddEquation,blendSrc:T.OneFactor,blendDst:T.OneMinusSrcAlphaFactor,blendSrcAlpha:T.OneFactor,blendDstAlpha:T.OneMinusSrcAlphaFactor,
+        vertexShader:`varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+        fragmentShader:`precision highp float; varying vec2 vUv; uniform float time,uFade;
+          #define T (time+5.)
+          #define S smoothstep
+          mat2 rot(float a){ vec4 c=cos(a-vec4(0.0,11.0,33.0,0.0)); return mat2(c.x,c.y,c.z,c.w); }
+          vec3 hue(float a){ return .5+.5*sin(a*3.3+vec3(1,2,3)); }
+          vec2 cmul(vec2 a, vec2 b){ return vec2(a.x*b.x-a.y*b.y,a.x*b.y+b.x*a.y); }
+          vec3 smin(vec3 a, vec3 b, float k){ vec3 h=clamp(.5+.5*(b-a)/k,.0,1.); return mix(b,a,h)-k*h*(1.-h); }
+          float swirls(vec3 p){ vec3 c=p; float d=.1;
+            for(int i=0;i<5;i++){ p=smin(p,-p,-.01)/dot(p,p)-.7; p.yz=cmul(p.yz,p.yz); p=p.zxy; d+=exp(-19.*abs(dot(p,c))); }
+            return d; }
+          void anim(inout vec3 p){ float k=mix(.01,6.3,fract(T*.2));
+            p.yz*=rot(k*.123+T*.2); p.xz*=rot(-.1/k*1.2+k*.2); }
+          vec3 march(vec3 p, vec3 rd){ anim(p); anim(rd); vec3 col=vec3(0); float c=.0, t=.0;
+            for(int i=0;i<${PASOS};i++){ t+=exp(-t*.65)*exp(-c*1.05); c=swirls(p+rd*t); col+=c*hue(dot(p,p)+c)*.008*(60.0/${PASOS}.0); }
+            return col; }
+          float effect(vec2 p){ p=abs(abs(p)-vec2(1.1,.85))-vec2(1,.75); float d=length(max(p,.0))+min(.0,max(p.x,p.y))-.02; return S(.05,.0,d); }
+          void cam(inout vec3 p){ p.yz*=rot(-.64); p.xz*=rot(-.64); }
+          void main(){
+            vec2 uv=(vUv*2.0-1.0)*0.5;
+            vec3 col=vec3(0), ro=vec3(0,0,-2), rd=normalize(vec3(uv,.8)), lp=vec3(1,2,-3);
+            // intersección directa con la esfera de radio 1 (el original la busca en 400 pasos)
+            float b=dot(ro,rd), cc=dot(ro,ro)-1.0, h=b*b-cc;
+            float dmin=length(ro-rd*b);                                        // distancia mínima del rayo al centro: halo
+            float halo=exp(-max(dmin-1.0,0.0)*14.0)*0.3*(1.0-step(0.0,h))*(1.0-smoothstep(0.55,0.9,length(vUv*2.0-1.0)));   // se apaga antes del borde del plano
+            if(h<0.0){ float a=halo*uFade; if(a<0.004) discard; gl_FragColor=vec4(vec3(0.55,0.75,1.0)*a,0.0); return; }
+            float t0=-b-sqrt(h); vec3 p=ro+rd*t0;
+            vec3 n=normalize(p), l=normalize(lp-p);
+            col+=march(p*4.,refract(rd,n,.98));
+            float dif=clamp(dot(l,n),.0,1.), fres=pow(clamp(1.+dot(rd,n),.0,1.),3.), spec=pow(clamp(dot(reflect(rd,n),l),.0,1.),4.);
+            dif=sqrt(dif);
+            col=mix(col,vec3(1.-dif)*sqrt(col),fres);
+            col=mix(col,vec3(dif),fres);
+            col+=.25*spec*hue(spec)+.5*spec;
+            vec3 q=p; cam(q);
+            col=mix(col,mix(col,vec3(1),.08),effect(q.xy*8.));
+            col=mix(col,vec3(1),fres*fres*.22);
+            col=S(-.05,.8,col); col=max(col,.02);
+            col=S(-.15,1.1,.9*col);
+            float borde=S(0.0,0.02,h);                                          // canto suave
+            gl_FragColor=vec4(col*uFade*borde,uFade*borde); }`}));
+      this.mesh.position.z=d.z; this.mesh.renderOrder=45; this.mesh.visible=false; this.el.object3D.add(this.mesh);
+      this._q=new T.Quaternion(); this._pq=new T.Quaternion();
+      this.t=0; this.running=false;
+      this.anchor.addEventListener('targetFound',()=>this.start());
+      this.anchor.addEventListener('targetLost',()=>{ clearTimeout(this._lostT); this._lostT=setTimeout(()=>this.reset(),2000); });
+    },
+    start(){ clearTimeout(this._lostT); if(this.running) return; this.running=true; this.t=0; this.mesh.visible=true; },
+    reset(){ this.running=false; this.mesh.visible=false; },
+    tick(t,dt){
+      if(!this.running){ if(this.anchor.components&&this.anchor.components['mindar-image-target']&&this.anchor.object3D.visible) this.start(); if(!this.running) return; }
+      const st=Math.min(0.05,(dt||16)/1000); this.t+=st;
+      this.u.time.value=this.t*this.data.velocidad; this.u.uFade.value=Math.min(1,this.t/1.5);
+      const cam=this.el.sceneEl.camera; if(cam){ cam.getWorldQuaternion(this._q); this.el.object3D.getWorldQuaternion(this._pq); this.mesh.quaternion.copy(this._pq.invert().multiply(this._q)); }
+    }
+  });
+  </script>
+
   <!-- ACRECIÓN: el shader "Accretion" de @XorDev (shadertoy.com/view/WcKXDV), en la versión comentada por
        Juan Carlos Ponce Campuzano, llevado a un plano sobre la página, en grises y con bordes disueltos. -->
   <script>
@@ -2263,7 +2334,7 @@
             const float INITIAL_OFFSET=0.1; const float RADIAL_SCALE=5.0; const float DEPTH_ATTENUATION=0.2;
             float rayDepth=0.0, stepDistance=0.0; vec4 finalColor=vec4(0.0);
             vec3 rayDirection=normalize(vec3(uv,1.0));
-            for(int step=0; step<MAX_STEPS; step++){
+            for(int paso=0; paso<MAX_STEPS; paso++){
               vec3 position=rayDepth*rayDirection+INITIAL_OFFSET;
               float angle=atan(position.y/0.2,position.x)*2.0;
               float radius=length(position.xy)-RADIAL_SCALE-rayDepth*DEPTH_ATTENUATION;
@@ -2271,12 +2342,12 @@
               position=vec3(angle,height,radius);
               for(int noiseStep=1; noiseStep<=NOISE_ITERATIONS; noiseStep++){
                 float noiseScale=float(noiseStep);
-                vec3 noiseInput=position.yzx*noiseScale+iTime+0.3*float(step);
+                vec3 noiseInput=position.yzx*noiseScale+iTime+0.3*float(paso);
                 position+=sin(noiseInput)/noiseScale; }
               vec3 surfacePattern=0.4*cos(position)-0.4;
               stepDistance=length(vec4(surfacePattern,position.z));
               rayDepth+=stepDistance;
-              float colorPhase=position.x+float(step)*0.4+rayDepth;
+              float colorPhase=position.x+float(paso)*0.4+rayDepth;
               finalColor+=(1.0+cos(colorPhase+vec4(6.0,1.0,9.0,0.0)))/stepDistance;
             }
             vec4 c=finalColor*finalColor/400.0;
@@ -3021,6 +3092,8 @@
 
     const EFECTOS={
       // 0 · la luz del foco → la materia se condensa en el modelo → rayos, polvo que sube y balanceo lento
+      // espiral · esfera de vidrio con espirales adentro (shader de @atzedent)
+      espiral:(e,i)=>({anchor:'', inner:marco(e,i,0.5)+'<a-entity espiral="'+esc(attr('espiral',e))+'"></a-entity>'}),
       // acrecion · shader "Accretion" de @XorDev sobre la página
       acrecion:(e,i)=>({anchor:'', inner:marco(e,i,0.5)+'<a-entity acrecion="'+esc(attr('acrecion',e))+'"></a-entity>'}),
       // espejo · así arriba, como abajo: red de nodos sobre la página y su reflejo debajo
@@ -3079,14 +3152,14 @@
       const o=f(e,t,e.modelo?M:null);
       const ancla=preview?'hz-ancla':'mindar-image-target="targetIndex: '+t+'"';
       let card='';
-      if(preview && HZ_DATOS.miniaturas[t]){ const asp=(HZ_DATOS.aspectos&&HZ_DATOS.aspectos[t])||1; card='<a-plane src="'+HZ_DATOS.miniaturas[t]+'" width="1" height="'+asp+'" position="0 0 -0.001" material="shader: flat; transparent: false"></a-plane>'; }
-      else if(preview) card='<a-plane width="1" height="1" position="0 0 -0.001" material="shader: flat; color: #1a1a1a"></a-plane>';
+      if(preview && HZ_DATOS.miniaturas[t]){ const asp=(HZ_DATOS.aspectos&&HZ_DATOS.aspectos[t])||1; card='<a-plane class="hz-carta" src="'+HZ_DATOS.miniaturas[t]+'" width="1" height="'+asp+'" position="0 0 -0.001" material="shader: flat; transparent: false"></a-plane>'; }
+      else if(preview) card='<a-plane class="hz-carta" width="1" height="1" position="0 0 -0.001" material="shader: flat; color: #1a1a1a"></a-plane>';
       body+='<a-entity id="hz-ancla-'+i+'" class="hz-ancla" data-efecto="'+e.efecto+'" '+ancla+' '+o.anchor+'>'+card+o.inner+'</a-entity>';
     });
 
     const fondo=HZC((H.colores&&H.colores.fondo)||'#0B0906'), puntos=HZC((H.colores&&H.colores.puntos)||'#D9A441');
     const scene=
-      '<a-scene '+(preview?'background="color: #101113"':'mindar-image="imageTargetSrc: '+esc(H.mind||'./mindar/targets.mind')+'; maxTrack: 1; filterMinCF: 0.0001; filterBeta: 0.001; warmupTolerance: 3; missTolerance: 10"')+
+      '<a-scene '+(preview?'background="color: #000000"':'mindar-image="imageTargetSrc: '+esc(H.mind||'./mindar/targets.mind')+'; maxTrack: 1; filterMinCF: 0.0001; filterBeta: 0.001; warmupTolerance: 3; missTolerance: 10"')+
       ' color-space="sRGB" renderer="colorManagement: true; antialias: true" vr-mode-ui="enabled: false"'+
       ' loading-screen="dotsColor: '+puntos+'; backgroundColor: '+fondo+'" device-orientation-permission-ui="enabled: false">'+
       '<a-assets>'+assets+'</a-assets>'+
@@ -3094,6 +3167,52 @@
               :'<a-camera position="0 0 0" look-controls="enabled:false"></a-camera>'+body)+
       '<a-entity id="pulse-holder"></a-entity></a-scene>';
     document.body.insertAdjacentHTML('afterbegin',scene);
+
+    // GLOW: un último paso de render colorea la imagen 3D por su brillo (frío en lo intenso, cálido en el halo) y le suma resplandor.
+    // Vale para todas las escenas y para cualquier GLB, sin tocar cada efecto.
+    (function(){
+      const P=H.paleta||{}; if(P.modo!=='glow') return;
+      const sc=document.querySelector('a-scene');
+      const instalar=()=>{
+        const T=AFRAME.THREE, r=sc.renderer; if(!r||r.__hzGlow) return; r.__hzGlow=true;
+        const orig=r.render.bind(r), sz=new T.Vector2();
+        let rt=null;
+        const u={tScene:{value:null},uPx:{value:new T.Vector2()},uFrio:{value:new T.Color(P.frio||'#19E6FF')},uCalido:{value:new T.Color(P.calido||'#FF2340')},
+          uHalo:{value:P.halo==null?1.0:P.halo},uContraste:{value:P.contraste||1.0}};
+        const q=new T.Mesh(new T.PlaneGeometry(2,2),new T.ShaderMaterial({uniforms:u,depthTest:false,depthWrite:false,transparent:true,
+          blending:T.CustomBlending,blendEquation:T.AddEquation,blendSrc:T.OneFactor,blendDst:T.OneMinusSrcAlphaFactor,blendSrcAlpha:T.OneFactor,blendDstAlpha:T.OneMinusSrcAlphaFactor,
+          vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }',
+          fragmentShader:`precision highp float; varying vec2 vUv; uniform sampler2D tScene; uniform vec2 uPx; uniform vec3 uFrio,uCalido; uniform float uHalo,uContraste;
+            float lum(vec3 c){ return max(c.r,max(c.g,c.b)); }
+            void main(){
+              vec4 s=texture2D(tScene,vUv); float L=pow(clamp(lum(s.rgb),0.0,1.0),1.0/uContraste);
+              // halo: brillo de los alrededores en dos radios
+              float h=0.0;
+              for(int i=0;i<12;i++){ float a=float(i)*0.5236; vec2 d=vec2(cos(a),sin(a));
+                h+=lum(texture2D(tScene,vUv+d*uPx*5.0).rgb)*0.6+lum(texture2D(tScene,vUv+d*uPx*13.0).rgb)*0.4; }
+              h/=12.0;
+              vec3 col=uFrio*smoothstep(0.02,0.6,L)*L*1.25 + mix(uFrio,vec3(1.0),smoothstep(0.75,1.0,L))*smoothstep(0.6,1.0,L)*0.6   // trazo: cian que en el núcleo se vuelve blanco
+                      + uCalido*h*uHalo*1.4*(1.0-smoothstep(0.3,0.9,L))                                                   // resplandor rojo alrededor
+                      + uCalido*smoothstep(0.0,0.25,L)*(1.0-smoothstep(0.25,0.5,L))*0.6;                                // lo tenue tira a rojo
+              col=pow(col,vec3(1.0/2.2));
+              float a=max(s.a,0.0);
+              gl_FragColor=vec4(col,a); }`}));
+        const qs=new T.Scene(); qs.add(q); const qc=new T.OrthographicCamera(-1,1,1,-1,0,1);
+        r.render=function(scene,camera){
+          if(scene!==sc.object3D) return orig(scene,camera);
+          r.getDrawingBufferSize(sz);
+          if(!rt||rt.width!==sz.x||rt.height!==sz.y){ if(rt) rt.dispose(); rt=new T.WebGLRenderTarget(sz.x,sz.y,{samples:r.capabilities.isWebGL2?4:0}); u.uPx.value.set(1/sz.x,1/sz.y); }
+          // la tarjeta de la vista previa (capa 1) queda fuera del glow: se dibuja tal cual y el glow va encima
+          document.querySelectorAll('.hz-carta').forEach(e=>e.object3D.traverse(o=>o.layers.set(1)));
+          const prev=r.getRenderTarget(), ac=r.autoClear; r.autoClear=false;
+          r.setRenderTarget(rt); r.clear(); orig(scene,camera); r.setRenderTarget(prev);
+          r.clear(); camera.layers.set(1); orig(scene,camera); camera.layers.set(0);
+          u.tScene.value=rt.texture; orig(qs,qc); r.autoClear=ac;
+        };
+      };
+      if(sc.renderer) instalar(); else sc.addEventListener('renderstart',instalar,{once:true});
+      sc.addEventListener('loaded',instalar,{once:true});
+    })();
 
     if(preview){
       // la vista previa: el trigger "aparece" apenas carga la escena

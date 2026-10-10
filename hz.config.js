@@ -19,10 +19,12 @@ window.HZ = {
   // archivo de triggers que genera preparar.html
   mind: './mindar/targets.mind',
 
-  // blanco y negro: todos los colores del motor pasan a su gris de igual luminancia, y además se filtra
-  // la imagen 3D completa (texturas y colores propios de los GLB incluidos).
-  // contraste: 1 = neutro, más de 1 endurece los grises · camara: false deja la cámara en color
-  paleta:  { modo: 'bn', contraste: 1.15, camara: true },
+  // paleta. modo 'glow': toda la imagen 3D se colorea por su brillo, cian en los trazos (blanco en los núcleos)
+  // y un halo rojo alrededor; vale para todas las escenas y para cualquier GLB.
+  //   frio / calido: los dos colores · halo: cuánto resplandor (0 = nada, 1 = normal, 2 = mucho)
+  //   contraste: más de 1 endurece · camara: false deja la imagen de la cámara en color (true la pasa a grises)
+  // modo 'bn' vuelve al blanco y negro puro.
+  paleta:  { modo: 'glow', frio: '#19E6FF', calido: '#FF2340', halo: 1.0, contraste: 1.1, camara: true },
   colores: { tinta: '#FFFFFF', fondo: '#000000', puntos: '#FFFFFF' },   // textos y puntitos de la pantalla de carga
 
   escenas: [
@@ -48,9 +50,11 @@ window.HZ = {
     //     (el efecto anterior sigue disponible: { efecto: 'estalagmitas' })
     { efecto: 'acrecion', marco: 0.5 },
 
-    // 4 · ESTALACTITAS — cuelgan de un techo invisible y bajan hacia la página; en cada punta se forma una gota que cae
-    //     ajustes: opciones: { 'espeleotema': { cantidad: 9, alto: 0.32, techo: 0.55, crece: 16 } }
-    { efecto: 'estalactitas', marco: 0.6 },
+    // 4 · ESPIRAL — esfera de vidrio con espirales adentro, del shader de Matthias Hurrle (@atzedent), flotando sobre la página
+    //     ajustes: opciones: { 'espiral': { tamano: 0.62, z: 0.24, pasos: 60, velocidad: 1 } }
+    //     (pasos baja el costo en teléfonos lentos: 40 se ve casi igual)
+    //     (el efecto anterior sigue disponible: { efecto: 'estalactitas' })
+    { efecto: 'espiral', marco: 0.5 },
 
     // 5 · SINAPSIS — neuronas suspendidas; el impulso viaja por el axón, destella en la sinapsis y la siguiente dispara
     //     ajustes: opciones: { 'sinapsis': { neuronas: 22, viaje: 0.9 } }
