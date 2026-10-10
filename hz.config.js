@@ -19,12 +19,11 @@ window.HZ = {
   // archivo de triggers que genera preparar.html
   mind: './mindar/targets.mind',
 
-  // paleta. modo 'glow': toda la imagen 3D se colorea por su brillo, cian en los trazos (blanco en los núcleos)
-  // y un halo rojo alrededor; vale para todas las escenas y para cualquier GLB.
-  //   frio / calido: los dos colores · halo: cuánto resplandor (0 = nada, 1 = normal, 2 = mucho)
-  //   contraste: más de 1 endurece · camara: false deja la imagen de la cámara en color (true la pasa a grises)
+  // paleta. modo 'glow': toda la imagen 3D se colorea por su brillo con un degradé de capas de montaña:
+  // azul noche en lo tenue, petróleo, violeta y rosa en lo más intenso (nunca blanco), con un halo violeta suave.
+  //   halo: cuánto resplandor (0 = nada, 1 = normal) · camara: false deja la imagen de la cámara en color
   // modo 'bn' vuelve al blanco y negro puro.
-  paleta:  { modo: 'glow', frio: '#19E6FF', calido: '#FF2340', halo: 1.0, contraste: 1.1, camara: true },
+  paleta:  { modo: 'glow', halo: 0.6, contraste: 1.0, camara: true },
   colores: { tinta: '#FFFFFF', fondo: '#000000', puntos: '#FFFFFF' },   // textos y puntitos de la pantalla de carga
 
   escenas: [
