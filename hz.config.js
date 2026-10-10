@@ -30,38 +30,38 @@ window.HZ = {
 
     // 0 · MICELIO — hifas que nacen de unas esporas, crecen ramificándose sobre la página y después las recorren pulsos de luz
     //     ajustes: opciones: { 'micelio': { esporas: 5, crece: 14, rama: 0.045, radio: 0.46 } }
-    { efecto: 'micelio', marco: 0.55 },
+    { efecto: 'micelio', marco: false },
 
     // 1 · ESPEJO — así arriba, como abajo: la página es el horizonte; una red de nodos flota encima y su reflejo vive debajo,
     //     unidos por hilos verticales, con un flujo de reloj de arena que cruza de un mundo al otro. Tocar la pantalla suma nodos.
     //     ajustes: opciones: { 'espejo': { nodos: 42, enlace: 0.15, alto: 0.36, arena: 160 } }
     //     (el efecto anterior sigue disponible: { efecto: 'fuego' })
-    { efecto: 'espejo', marco: 0.6 },
+    { efecto: 'espejo', marco: false },
 
     // 2 · MERCURIO — gotas de metal líquido que se atraen y se funden; al quedar una sola, estalla y vuelve a empezar
     //     ajustes: opciones: { 'mercurio': { gotas: 14, tamano: 0.045, atrae: 0.012, queda: 5 } }
     //     (el efecto anterior, red, sigue disponible: { efecto: 'red', modelo: './assets/2.glb', malla: 'red' })
-    { efecto: 'mercurio', marco: 0.6 },
+    { efecto: 'mercurio', marco: false },
 
     // 3 · ACRECIÓN — el shader "Accretion" de @XorDev (shadertoy.com/view/WcKXDV) sobre la página, en grises
     //     ajustes: opciones: { 'acrecion': { tamano: 1, escala: 1, velocidad: 1, pasos: 20, brillo: 1 } }
     //     (pasos baja el costo en teléfonos lentos: 14 o 16 se ve casi igual)
     //     (el efecto anterior sigue disponible: { efecto: 'estalagmitas' })
-    { efecto: 'acrecion', marco: 0.5 },
+    { efecto: 'acrecion', marco: false, opciones: { 'acrecion': { brillo: 0.6 } } },
 
     // 4 · ESPIRAL — esfera de vidrio con espirales adentro, del shader de Matthias Hurrle (@atzedent), flotando sobre la página
     //     ajustes: opciones: { 'espiral': { tamano: 0.62, z: 0.24, pasos: 60, velocidad: 1 } }
     //     (pasos baja el costo en teléfonos lentos: 40 se ve casi igual)
     //     (el efecto anterior sigue disponible: { efecto: 'estalactitas' })
-    { efecto: 'espiral', marco: 0.5 },
+    { efecto: 'espiral', marco: false },
 
     // 5 · SINAPSIS — neuronas suspendidas; el impulso viaja por el axón, destella en la sinapsis y la siguiente dispara
     //     ajustes: opciones: { 'sinapsis': { neuronas: 22, viaje: 0.9 } }
-    { efecto: 'sinapsis', marco: 0.6 },
+    { efecto: 'sinapsis', marco: false },
 
     // 6 · AGUJERO NEGRO — horizonte de sucesos, anillo de fotones, disco de acreción en espiral y estrellas que caen
     //     ajustes: opciones: { 'hoyo-negro': { radio: 0.06, disco: 0.36, inclina: 12, estrellas: 1600 } }
-    { efecto: 'hoyo-negro', marco: 0.6 }
+    { efecto: 'hoyo-negro', marco: false }
 
   ]
 };
