@@ -31,10 +31,11 @@ window.HZ = {
     //     ajustes: opciones: { 'micelio': { esporas: 5, crece: 14, rama: 0.045, radio: 0.46 } }
     { efecto: 'micelio', marco: 0.55 },
 
-    // 1 · FUEGO — dos pedernales chocan, saltan chispas, una prende la yesca, aparece la brasa y crece la llama
-    //     ajustes: opciones: { 'fuego': { golpes: 5, cada: 1.25, llama: 12, chispas: 90, escala: 1 } }
-    //     (el efecto anterior, agua, sigue disponible: { efecto: 'agua', imagen: 'gen:interferencia' })
-    { efecto: 'fuego', marco: 0.6 },
+    // 1 · ESPEJO — así arriba, como abajo: la página es el horizonte; una red de nodos flota encima y su reflejo vive debajo,
+    //     unidos por hilos verticales, con un flujo de reloj de arena que cruza de un mundo al otro. Tocar la pantalla suma nodos.
+    //     ajustes: opciones: { 'espejo': { nodos: 42, enlace: 0.15, alto: 0.36, arena: 160 } }
+    //     (el efecto anterior sigue disponible: { efecto: 'fuego' })
+    { efecto: 'espejo', marco: 0.6 },
 
     // 2 · MERCURIO — gotas de metal líquido que se atraen y se funden; al quedar una sola, estalla y vuelve a empezar
     //     ajustes: opciones: { 'mercurio': { gotas: 14, tamano: 0.045, atrae: 0.012, queda: 5 } }
