@@ -2416,7 +2416,7 @@
       this.horizonte=new T.Mesh(new T.PlaneGeometry(1,1),hm); this.horizonte.position.z=0.002; this.root.add(this.horizonte);
       this.t=0; this.running=false;
       // tocar la pantalla suma un nodo al sistema (solo mientras esta escena está a la vista)
-      this._tap=()=>{ if(this.running && this.N.length<d.max) this.suma(); };
+      this._tap=()=>{ if(this.running && this.N.length<d.max){ this.suma(); window.HZS&&HZS.ev('espejo'); } };
       window.addEventListener('pointerdown',this._tap,{passive:true});
       this.anchor.addEventListener('targetFound',()=>this.start());
       this.anchor.addEventListener('targetLost',()=>{ clearTimeout(this._lostT); this._lostT=setTimeout(()=>this.reset(),2000); });
@@ -2598,7 +2598,7 @@
     },
     start(){ clearTimeout(this._lostT); if(this.running) return; this.running=true; this.t=0; this.root.visible=true; this.u.uFade.value=0; this.next=0.8; this.cola=[]; this.u.uStart.value.fill(-99); },
     reset(){ this.running=false; this.root.visible=false; },
-    dispara(i){ const n=this.Nr[i]; if(this.t-n.fire<0.9) return; n.fire=this.t;
+    dispara(i){ const n=this.Nr[i]; if(this.t-n.fire<0.9) return; n.fire=this.t; window.HZS&&HZS.ev('sinapsis',i);
       this.E.forEach((e,k)=>{ if(e.a===i){ this.u.uStart.value[k]=this.t; this.cola.push({k,at:this.t+this.data.viaje}); } }); },
     tick(t,dt){
       if(!this.running){ if(this.anchor.components&&this.anchor.components['mindar-image-target']&&this.anchor.object3D.visible) this.start(); if(!this.running) return; }
@@ -2791,7 +2791,7 @@
         for(let i=0;i<G.length;i++) for(let j=i+1;j<G.length;j++){ const a=G[i],b=G[j], dd=Math.hypot(a.x-b.x,a.y-b.y);
           if(dd<Math.min(a.r,b.r)*0.35){ const ma=a.r*a.r, mb=b.r*b.r, m=ma+mb;
             a.x=(a.x*ma+b.x*mb)/m; a.y=(a.y*ma+b.y*mb)/m; a.vx=(a.vx*ma+b.vx*mb)/m; a.vy=(a.vy*ma+b.vy*mb)/m; a.r=Math.sqrt(m);
-            a.w=Math.min(0.32,a.w+0.12+0.25*mb/m); a.ph=Math.atan2(b.y-a.y,b.x-a.x)*2; G.splice(j,1); j--; } }
+            a.w=Math.min(0.32,a.w+0.12+0.25*mb/m); a.ph=Math.atan2(b.y-a.y,b.x-a.x)*2; G.splice(j,1); j--; window.HZS&&HZS.ev('mercurio'); } }
         if(G.length===1){ if(this.unaDesde===null) this.unaDesde=this.t; if(this.t-this.unaDesde>d.queda) this.estalla(); }
       } else {
         this.abreT+=st;
@@ -3037,7 +3037,7 @@
       const r=this.el.sceneEl.renderer; if(r) this.pu.uViewH.value=r.getContext().drawingBufferHeight;
       // pulsos de nutrientes, cuando la red ya cubrió buena parte de la página
       const desde=d.crece*0.6;
-      if(s>desde){ const q=((s-desde)%d.pulsoCada)/d.pulsoCada; u.uPulse.value=q*1.15-0.05; u.uPulseK.value=Math.sin(Math.PI*Math.min(1,q*1.1)); } else u.uPulseK.value=0;
+      if(s>desde){ const q=((s-desde)%d.pulsoCada)/d.pulsoCada; const ci=Math.floor((s-desde)/d.pulsoCada); if(ci!==this._pc){ this._pc=ci; window.HZS&&HZS.ev('micelio'); } u.uPulse.value=q*1.15-0.05; u.uPulseK.value=Math.sin(Math.PI*Math.min(1,q*1.1)); } else u.uPulseK.value=0;
       // permanece, se marchita, descansa y vuelve a crecer
       const fin=d.crece+d.queda, k=Math.min(1,Math.max(0,(s-fin)/d.marchita));
       u.uFade.value=1-k*k*(3-2*k);
@@ -3168,20 +3168,23 @@
       '<a-entity id="pulse-holder"></a-entity></a-scene>';
     document.body.insertAdjacentHTML('afterbegin',scene);
 
-    // GLOW: un último paso de render colorea la imagen 3D por su brillo (frío en lo intenso, cálido en el halo) y le suma resplandor.
-    // Vale para todas las escenas y para cualquier GLB, sin tocar cada efecto.
+    // GLOW TÉRMICO: un último paso de render colorea todo por su brillo con el mapa de calor elegido.
+    // Los efectos se colorean enteros; la cámara se ve en grises y sus zonas más claras (luces, pantallas, piel iluminada) toman calor.
+    // La cercanía calienta: cuanto más grande se ve la tarjeta en pantalla, más sube la escena hacia el rojo (window.hzCalor, 0-1).
     (function(){
       const P=H.paleta||{}; if(P.modo!=='glow') return;
       const sc=document.querySelector('a-scene');
+      window.hzCalor=0.5;
       const instalar=()=>{
         const T=AFRAME.THREE, r=sc.renderer; if(!r||r.__hzGlow) return; r.__hzGlow=true;
         const orig=r.render.bind(r), sz=new T.Vector2();
-        let rt=null;
-        const u={tScene:{value:null},uPx:{value:new T.Vector2()},uFrio:{value:new T.Color(P.frio||'#10F0B8')},uCalido:{value:new T.Color(P.calido||'#FF2236')},
-          uHalo:{value:P.halo==null?1.0:P.halo},uContraste:{value:P.contraste||1.0}};
+        let rt=null, vidEl=null, vidTex=null;
+        const u={tScene:{value:null},tCam:{value:null},uCamOn:{value:0},uCan:{value:new T.Vector4(0,0,1,1)},uVid:{value:new T.Vector4(0,0,1,1)},
+          uPx:{value:new T.Vector2()},uHalo:{value:P.halo==null?1.0:P.halo},uContraste:{value:P.contraste||1.0},
+          uCalor:{value:0.5},uCercania:{value:P.cercania==null?1.0:P.cercania},uUmbral:{value:P.umbral==null?0.62:P.umbral}};
         // mapas de color: de lo tenue a lo intenso
         const MAPAS={
-          termico:['#1f4fe0','#2ec4ef','#4fd94a','#f6e23a','#ec4a1c','#a3121a'],   // imagen satelital infrarroja: azul, cian, verde, amarillo, rojo, rojo oscuro en el núcleo
+          termico:['#1f4fe0','#2ec4ef','#4fd94a','#f6e23a','#ec4a1c','#a3121a'],   // imagen satelital infrarroja
           inferno:['#120428','#3d0f73','#8f1f8f','#dc3a3a','#f7901e','#fde65e'],
           arbol:  ['#0f243b','#2e6496','#4d9ecc','#5ccccc','#70ebab','#8cf08a'],
           montana:['#020930','#123355','#225173','#784371','#a64071','#e74e7c']};
@@ -3190,32 +3193,59 @@
         const q=new T.Mesh(new T.PlaneGeometry(2,2),new T.ShaderMaterial({uniforms:u,depthTest:false,depthWrite:false,transparent:true,
           blending:T.CustomBlending,blendEquation:T.AddEquation,blendSrc:T.OneFactor,blendDst:T.OneMinusSrcAlphaFactor,blendSrcAlpha:T.OneFactor,blendDstAlpha:T.OneMinusSrcAlphaFactor,
           vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }',
-          fragmentShader:`precision highp float; varying vec2 vUv; uniform sampler2D tScene; uniform vec2 uPx; uniform vec3 uFrio,uCalido,uC0,uC1,uC2,uC3,uC4,uC5; uniform float uHalo,uContraste;
+          fragmentShader:`precision highp float; varying vec2 vUv;
+            uniform sampler2D tScene,tCam; uniform float uCamOn,uHalo,uContraste,uCalor,uCercania,uUmbral; uniform vec2 uPx; uniform vec4 uCan,uVid;
+            uniform vec3 uC0,uC1,uC2,uC3,uC4,uC5;
             float lum(vec3 c){ return max(c.r,max(c.g,c.b)); }
+            vec3 ramp(float k){ k=clamp(k,0.0,1.0);
+              return k<0.2?mix(uC0,uC1,k/0.2):k<0.4?mix(uC1,uC2,(k-0.2)/0.2):k<0.6?mix(uC2,uC3,(k-0.4)/0.2):k<0.8?mix(uC3,uC4,(k-0.6)/0.2):mix(uC4,uC5,(k-0.8)/0.2); }
             void main(){
+              float shift=(uCalor-0.5)*0.4*uCercania;                                   // cerca = más caliente, lejos = más frío
               vec4 s=texture2D(tScene,vUv); float L=pow(clamp(lum(s.rgb),0.0,1.0),1.0/uContraste);
-              // halo: brillo de los alrededores en dos radios
               float h=0.0;
               for(int i=0;i<12;i++){ float a=float(i)*0.5236; vec2 d=vec2(cos(a),sin(a));
                 h+=lum(texture2D(tScene,vUv+d*uPx*6.0).rgb)*0.5+lum(texture2D(tScene,vUv+d*uPx*16.0).rgb)*0.5; }
               h/=12.0;
-              // degradé por brillo según el mapa elegido en hz.config.js (térmico, árbol o montaña)
-              vec3 c0=uC0,c1=uC1,c2=uC2,c3=uC3,c4=uC4,c5=uC5;
-              float k=clamp(pow(L,0.7)*1.2,0.0,1.0);
-              vec3 tono=k<0.2?mix(c0,c1,k/0.2):k<0.4?mix(c1,c2,(k-0.2)/0.2):k<0.6?mix(c2,c3,(k-0.4)/0.2):k<0.8?mix(c3,c4,(k-0.6)/0.2):mix(c4,c5,(k-0.8)/0.2);
+              vec3 tono=ramp(pow(L,0.7)*1.2+shift);
               float a=smoothstep(0.03,0.22,L);
-              // velo suave alrededor de los trazos, con los tonos bajos del mismo mapa; no suma luz sobre el trazo
               float hk=clamp(pow(h,0.7)*1.3,0.0,1.0);
-              vec3 tg=mix(c0,c2,hk);
+              vec3 tg=mix(uC0,uC2,clamp(hk+shift,0.0,1.0));
               float ag=clamp(hk*uHalo*0.55,0.0,0.6)*(1.0-a);
-              vec3 col=tono*a+tg*ag;
-              gl_FragColor=vec4(col,clamp(a+ag,0.0,1.0)); }`}));
+              vec3 col=tono*a+tg*ag; float al=clamp(a+ag,0.0,1.0);
+              if(uCamOn>0.5){
+                // la cámara como imagen satelital: grises, y lo más claro del entorno toma calor
+                vec2 px=vec2(uCan.x+vUv.x*uCan.z, uCan.y+(1.0-vUv.y)*uCan.w);
+                vec2 vu=vec2((px.x-uVid.x)/uVid.z, 1.0-(px.y-uVid.y)/uVid.w);
+                vec3 cr=texture2D(tCam,clamp(vu,0.0,1.0)).rgb; float cl=dot(cr,vec3(0.299,0.587,0.114));
+                vec3 gris=vec3(cl*0.82);
+                float th=smoothstep(uUmbral,uUmbral+0.07,cl);
+                vec3 cam=mix(gris,ramp((cl-uUmbral)/(1.0-uUmbral)*0.9+shift)*0.92,th);
+                gl_FragColor=vec4(cam*(1.0-al)+col,1.0);
+              } else gl_FragColor=vec4(col,al); }`}));
         const qs=new T.Scene(); qs.add(q); const qc=new T.OrthographicCamera(-1,1,1,-1,0,1);
+        const v0=new T.Vector3(), v1=new T.Vector3(), v2=new T.Vector3();
+        let calor=0.5;
         r.render=function(scene,camera){
           if(scene!==sc.object3D) return orig(scene,camera);
           r.getDrawingBufferSize(sz);
           if(!rt||rt.width!==sz.x||rt.height!==sz.y){ if(rt) rt.dispose(); rt=new T.WebGLRenderTarget(sz.x,sz.y,{samples:r.capabilities.isWebGL2?4:0}); u.uPx.value.set(1/sz.x,1/sz.y); }
-          // la tarjeta de la vista previa (capa 1) queda fuera del glow: se dibuja tal cual y el glow va encima
+          // cámara: el video de MindAR como textura, alineado a pantalla con el mismo recorte que usa la página
+          if(P.camaraTermica!==false){
+            const v=document.querySelector('video');
+            if(v && v.readyState>=2 && v.videoWidth){
+              if(v!==vidEl){ vidEl=v; if(vidTex) vidTex.dispose(); vidTex=new T.VideoTexture(v); vidTex.minFilter=T.LinearFilter; vidTex.magFilter=T.LinearFilter; }
+              const cr=r.domElement.getBoundingClientRect(), vr=v.getBoundingClientRect();
+              u.uCan.value.set(cr.left,cr.top,cr.width,cr.height); u.uVid.value.set(vr.left,vr.top,vr.width,vr.height);
+              u.tCam.value=vidTex; u.uCamOn.value=1;
+            } else u.uCamOn.value=0;
+          }
+          // cercanía: qué tan grande se ve la tarjeta visible en pantalla
+          let frac=-1;
+          document.querySelectorAll('.hz-ancla').forEach(an=>{ const o=an.object3D; if(!o.visible||frac>=0) return;
+            o.updateMatrixWorld(); v0.set(0,0,0).applyMatrix4(o.matrixWorld).project(camera); v1.set(0.5,0,0).applyMatrix4(o.matrixWorld).project(camera); v2.set(0,0.5,0).applyMatrix4(o.matrixWorld).project(camera);
+            frac=Math.max(Math.hypot(v1.x-v0.x,v1.y-v0.y),Math.hypot(v2.x-v0.x,v2.y-v0.y)); });
+          const meta=(frac<0||!isFinite(frac))?0.5:Math.min(1,Math.max(0,(frac-0.35)/0.6));
+          calor+=(meta-calor)*0.06; if(!isFinite(calor)) calor=0.5; u.uCalor.value=calor; window.hzCalor=calor;
           document.querySelectorAll('.hz-carta').forEach(e=>e.object3D.traverse(o=>o.layers.set(1)));
           const prev=r.getRenderTarget(), ac=r.autoClear; r.autoClear=false;
           r.setRenderTarget(rt); r.clear(); orig(scene,camera); r.setRenderTarget(prev);
@@ -3225,6 +3255,65 @@
       };
       if(sc.renderer) instalar(); else sc.addEventListener('renderstart',instalar,{once:true});
       sc.addEventListener('loaded',instalar,{once:true});
+    })();
+
+    // SONIDO [Hz]: cada escena tiene su capa generativa (todo sintetizado en el teléfono, sin archivos).
+    // Suena mientras la tarjeta está a la vista; la cercanía abre el filtro y sube el volumen.
+    (function(){
+      const S=window.HZS={ctx:null,on:{},vol:(H.sonido&&H.sonido.volumen!=null)?H.sonido.volumen:0.8};
+      if(H.sonido===false) return;
+      S.armar=()=>{ if(S.ctx){ if(S.ctx.state==='suspended') S.ctx.resume(); return; }
+        const C=window.AudioContext||window.webkitAudioContext; if(!C) return; const c=S.ctx=new C();
+        S.lp=c.createBiquadFilter(); S.lp.type='lowpass'; S.lp.frequency.value=2500; S.lp.Q.value=0.4;
+        S.out=c.createGain(); S.out.gain.value=0; S.lp.connect(S.out);
+        const comp=c.createDynamicsCompressor(); S.out.connect(comp); comp.connect(c.destination);
+        // eco compartido para que las escenas tengan espacio
+        S.del=c.createDelay(1.5); S.del.delayTime.value=0.37; S.fb=c.createGain(); S.fb.gain.value=0.35; const dlp=c.createBiquadFilter(); dlp.type='lowpass'; dlp.frequency.value=1800;
+        S.del.connect(dlp); dlp.connect(S.fb); S.fb.connect(S.del); S.del.connect(S.lp);
+        const N=c.sampleRate*2, b=c.createBuffer(1,N,c.sampleRate), d=b.getChannelData(0); for(let i=0;i<N;i++) d[i]=Math.random()*2-1; S.ruido=b;
+        const loop=()=>{ let k=+window.hzCalor; if(!isFinite(k)) k=0.5; const t=c.currentTime;
+          S.lp.frequency.setTargetAtTime(500+k*k*7000,t,0.2);
+          const activo=Object.keys(S.on).length>0; S.out.gain.setTargetAtTime(activo?S.vol*(0.45+0.55*k):0,t,0.3);
+          requestAnimationFrame(loop); }; loop();
+        document.querySelectorAll('.hz-ancla').forEach(an=>{ if(an.object3D.visible) S.start(an.dataset.efecto); });   // lo que ya está a la vista empieza a sonar
+      };
+      const osc=(tipo,f,g,dest)=>{ const c=S.ctx,o=c.createOscillator(),a=c.createGain(); o.type=tipo; o.frequency.value=f; a.gain.value=g; o.connect(a); a.connect(dest||S.lp); o.start(); return {o,a}; };
+      const ruido=(dest,g,tipoF,fq,Q)=>{ const c=S.ctx,s=c.createBufferSource(); s.buffer=S.ruido; s.loop=true; const f=c.createBiquadFilter(); f.type=tipoF; f.frequency.value=fq; f.Q.value=Q||1; const a=c.createGain(); a.gain.value=g; s.connect(f); f.connect(a); a.connect(dest||S.lp); s.start(); return {s,f,a}; };
+      const env=(g,t,a,dur,pico)=>{ g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(pico,t+a); g.gain.exponentialRampToValueAtTime(0.0001,t+a+dur); };
+      const golpe=(f,dur,pico,tipo,f2,eco)=>{ if(!S.ctx) return; const c=S.ctx,t=c.currentTime,o=c.createOscillator(),g=c.createGain(); o.type=tipo||'sine'; o.frequency.setValueAtTime(f,t); if(f2) o.frequency.exponentialRampToValueAtTime(f2,t+dur);
+        o.connect(g); g.connect(S.lp); if(eco) g.connect(S.del); env(g,t,0.005,dur,pico); o.start(t); o.stop(t+dur+0.05); };
+      const chasquido=(fq,dur,pico)=>{ if(!S.ctx) return; const c=S.ctx,t=c.currentTime,s=c.createBufferSource(); s.buffer=S.ruido; const f=c.createBiquadFilter(); f.type='bandpass'; f.frequency.value=fq; f.Q.value=4; const g=c.createGain();
+        s.connect(f); f.connect(g); g.connect(S.lp); env(g,t,0.002,dur,pico); s.start(t,Math.random()); s.stop(t+dur+0.05); };
+      const PENTA=[0,3,5,7,10,12,15,17,19,22];
+      // capas continuas de cada escena: devuelven una función que las apaga
+      const DRONES={
+        micelio:()=>{ const n=ruido(null,0.05,'bandpass',2800,3); let vivo=true;
+          const crep=()=>{ if(!vivo) return; chasquido(1800+Math.random()*3500,0.015+Math.random()*0.03,0.25*Math.random()); setTimeout(crep,40+Math.random()*220*(1.3-(window.hzCalor||0.5))); }; crep();
+          return ()=>{ vivo=false; n.s.stop(); }; },
+        espejo:()=>{ const c=S.ctx,pl=c.createStereoPanner?c.createStereoPanner():null,pr=c.createStereoPanner?c.createStereoPanner():null; if(pl){ pl.pan.value=-0.6; pr.pan.value=0.6; pl.connect(S.lp); pr.connect(S.lp); }
+          const a=osc('sine',220,0.08,pl||S.lp), b=osc('sine',330,0.06,pr||S.lp), lfo=osc('sine',0.15,0.03,null); lfo.a.disconnect(); lfo.a.connect(a.a.gain);
+          return ()=>{ [a,b,lfo].forEach(x=>x.o.stop()); }; },
+        mercurio:()=>{ const a=osc('sine',523.25,0.02,null), b=osc('sine',527.5,0.02,null); return ()=>{ a.o.stop(); b.o.stop(); }; },
+        acrecion:()=>{ const n=ruido(null,0.22,'lowpass',380,6), lfo=osc('sine',0.11,260,null); lfo.a.disconnect(); lfo.a.connect(n.f.frequency);
+          const sub=osc('sine',55,0.12,null); return ()=>{ n.s.stop(); lfo.o.stop(); sub.o.stop(); }; },
+        espiral:()=>{ const v=[220,261.63,329.63,392].map((f,i)=>osc(i%2?'triangle':'sine',f,0.035,S.del)), sh=v.map((x,i)=>{ const l=osc('sine',0.07+i*0.03,3+i,null); l.a.disconnect(); l.a.connect(x.o.detune); return l; });
+          v.forEach(x=>x.a.connect(S.lp)); return ()=>{ v.concat(sh).forEach(x=>x.o.stop()); }; },
+        sinapsis:()=>{ const z=osc('sine',110,0.03,null); return ()=>z.o.stop(); },
+        'hoyo-negro':()=>{ const a=osc('sine',41,0.22,null), b=osc('sine',41.6,0.18,null), n=ruido(null,0.18,'lowpass',90,2), lfo=osc('sine',0.03,70,null); lfo.a.disconnect(); lfo.a.connect(n.f.frequency);
+          return ()=>{ [a,b,lfo].forEach(x=>x.o.stop()); n.s.stop(); }; }
+      };
+      S.start=(ef)=>{ if(!S.ctx||S.on[ef]||!DRONES[ef]) return; clearTimeout(S['_t'+ef]); S.on[ef]=DRONES[ef](); };
+      S.stop=(ef)=>{ const f=S.on[ef]; if(!f) return; delete S.on[ef]; S['_t'+ef]=setTimeout(()=>{ try{ f(); }catch(e){} },400); };
+      // eventos de cada efecto
+      S.ev=(ef,x)=>{ if(!S.ctx||!S.on[ef]) return;
+        if(ef==='micelio') golpe(62,0.9,0.5,'sine',38);                                                 // pulso de nutriente: latido grave
+        else if(ef==='sinapsis'){ chasquido(5200,0.02,0.4); golpe(220*Math.pow(2,PENTA[(x||0)%PENTA.length]/12),0.35,0.18,'sine',null,true); }   // disparo
+        else if(ef==='mercurio') golpe(900+Math.random()*700,0.45,0.25,'sine',380,true);                  // dos gotas se funden
+        else if(ef==='espejo'){ const f=440*Math.pow(2,PENTA[Math.floor(Math.random()*8)]/12); golpe(f,1.6,0.2,'sine',null,true); golpe(f*1.5,1.2,0.08,'sine',null,true); }  // nodo nuevo
+      };
+      // el audio solo puede arrancar con un toque: cualquier toque lo arma
+      window.addEventListener('pointerdown',()=>S.armar(),{passive:true});
+      document.addEventListener('visibilitychange',()=>{ if(document.hidden&&S.ctx) S.ctx.suspend(); else if(S.ctx) S.ctx.resume(); });
     })();
 
     if(preview){
@@ -3242,6 +3331,10 @@
 
   <!-- Eventos -->
   <script>
+    // sonido de cada escena: arranca con la tarjeta y se apaga al perderla
+    document.querySelectorAll('.hz-ancla').forEach(an=>{ const ef=an.dataset.efecto;
+      an.addEventListener('targetFound',()=>window.HZS&&HZS.start(ef));
+      an.addEventListener('targetLost',()=>window.HZS&&HZS.stop(ef)); });
     // agua: la onda aparece con el trigger y arranca con una gota en el centro
     document.querySelectorAll('.hz-ancla[data-efecto="agua"]').forEach(a=>{
       const ripple=a.querySelector('.hz-ripple');
@@ -3267,7 +3360,8 @@
     document.getElementById('audio-btn').addEventListener('click',armar,{passive:true});
     // Primer click global también arma y oculta el botón
     window.addEventListener('click',armar,{once:true,passive:true});
-    if(!document.querySelector('.hz-chorus,.hz-choir')) document.getElementById('audio-btn').classList.add('hidden');
+    document.getElementById('audio-btn').addEventListener('click',()=>{ window.HZS&&HZS.armar(); document.querySelectorAll('.hz-ancla').forEach(an=>{ if(an.object3D.visible) HZS.start(an.dataset.efecto); }); },{passive:true});
+    if((window.HZ||{}).sonido===false && !document.querySelector('.hz-chorus,.hz-choir')) document.getElementById('audio-btn').classList.add('hidden');
     // Failsafe: si la página va a 2º plano, cortar todo audio
     document.addEventListener('visibilitychange',()=>{ if(document.hidden) voces().forEach(v=>v.stopNow()); });
 

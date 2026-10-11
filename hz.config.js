@@ -19,14 +19,19 @@ window.HZ = {
   // archivo de triggers que genera preparar.html
   mind: './mindar/targets.mind',
 
-  // paleta. modo 'glow': toda la imagen 3D se colorea por su brillo con un mapa de color.
+  // paleta. modo 'glow': toda la imagen se colorea por su brillo con un mapa de calor.
   //   mapa: 'termico' (imagen satelital infrarroja: azul, cian, verde, amarillo, rojo, rojo oscuro en lo más intenso)
-  //         'inferno' (violeta, magenta, rojo, naranja, amarillo)
-  //         'arbol' (azul acero, cian, verde menta) · 'montana' (azul noche, petróleo, violeta, rosa)
-  //         o una lista propia de 6 colores, de lo tenue a lo intenso: ['#...', ... ]
-  //   halo: velo suave alrededor (0 = nada, 1 = suave) · camara: false deja la imagen de la cámara en color
+  //         'inferno' · 'arbol' · 'montana' · o una lista propia de 6 colores, de lo tenue a lo intenso
+  //   halo: velo suave alrededor de los trazos (0 = nada, 1 = suave)
+  //   camaraTermica: la cámara en grises con sus zonas más claras en calor, como una imagen satelital (false = cámara en grises)
+  //   umbral: desde qué brillo de la cámara empieza el calor (0.5 = más zonas calientes, 0.75 = solo luces fuertes)
+  //   cercania: cuánto calienta acercar el teléfono (0 = nada, 1 = normal, 2 = mucho)
   // modo 'bn' vuelve al blanco y negro puro.
-  paleta:  { modo: 'glow', mapa: 'termico', halo: 1.0, contraste: 1.0, camara: true },
+  paleta:  { modo: 'glow', mapa: 'termico', halo: 1.0, contraste: 1.0, camaraTermica: true, umbral: 0.62, cercania: 1.0, camara: true },
+
+  // sonido: cada escena tiene su capa sintetizada en el teléfono; arranca con el primer toque en pantalla (o el botón 🔊).
+  // false lo apaga. volumen: 0 a 1.
+  sonido:  { volumen: 0.8 },
   colores: { tinta: '#FFFFFF', fondo: '#000000', puntos: '#FFFFFF' },   // textos y puntitos de la pantalla de carga
 
   escenas: [
