@@ -44,48 +44,33 @@ window.HZ = {
 
   escenas: [
 
-    // 0 · MICELIO — hifas que nacen de unas esporas, crecen ramificándose sobre la página y después las recorren pulsos de luz
-    //     ajustes: opciones: { 'micelio': { esporas: 5, crece: 14, rama: 0.045, radio: 0.46 } }
-    { efecto: 'micelio', marco: false, opciones: { 'micelio': { trepa: 0.6, alto: 0.5 } } },
+    // Las siete escenas son nubes de puntos con su propio color (assets/*.bin). Cada una llega como polvo y se arma de pie
+    // sobre la tarjeta; al acercar mucho el teléfono se desarma en polvo que gira y al alejarlo se vuelve a condensar.
+    // Ajustes comunes por escena: opciones: { 'nube': { tamano: 1, punto: 0.0035, brillo: 1.15, arma: 4.5, dispersa: 1 } }
+    //   tamano: escala de la nube · punto: tamaño de cada punto · arma: segundos que tarda en armarse · dispersa: 0 = no se desarma
+    //   ola / olaVel: pulsos de luz que la recorren · viento: cuánto se mece · giro: velocidad de giro
+    // Los efectos anteriores siguen disponibles con -lineas: { efecto: 'micelio-lineas' }
 
-    // 1 · ESPEJO — así arriba, como abajo: la página es el horizonte; una red de nodos flota encima y su reflejo vive debajo,
-    //     unidos por hilos verticales, con un flujo de reloj de arena que cruza de un mundo al otro. Tocar la pantalla suma nodos.
-    //     ajustes: opciones: { 'espejo': { nodos: 42, enlace: 0.15, alto: 0.36, arena: 160 } }
-    //     (el efecto anterior sigue disponible: { efecto: 'fuego' })
-    { efecto: 'espejo', marco: false, opciones: { 'espejo': { alto: 0.55 } } },
+    // 0 · MICELIO — red de hifas sobre la página, con hongos que se levantan; pulsos de luz que salen de las esporas
+    { efecto: 'micelio', marco: false },
 
-    // 2 · BOSQUE — bosque en nube de puntos, como un escaneo LiDAR: crece desde la página, se mece con el viento
-    //     y lo recorre una línea de escaneo; al acercar el teléfono sube el viento (sonido y movimiento de los árboles)
-    //     ajustes: opciones: { 'bosque': { arboles: 16, alto: 0.42, puntos: 26000, crece: 8, escaneo: 5, viento: 1 } }
-    //     (puntos baja el costo en teléfonos lentos: 15000 se ve casi igual)
-    //     (el efecto anterior sigue disponible: { efecto: 'mercurio' })
-    { efecto: 'bosque', marco: false, opciones: { 'bosque': { alto: 0.62 } } },
+    // 1 · ESPEJO — así arriba, como abajo: una ramificación dorada que sube y su reflejo azul que baja, unidas por arena que cae
+    { efecto: 'espejo', marco: false },
 
-    // 3 · CORAL — escaneo real de un coral en nube de puntos (160 mil puntos con su color). Llega como polvo y se arma sobre la página;
-    //     al acercar el teléfono se desarma en polvo que gira y al alejarlo se vuelve a condensar. El sonido sigue ese ir y venir.
-    //     ajustes: opciones: { 'coral': { tamano: 0.8, punto: 0.0042, arma: 4.5, dispersa: 1, brillo: 1.15 } }  (dispersa: 0 = no se desarma)
-    //     el archivo es assets/coral.bin
+    // 2 · BOSQUE — árboles que se mecen con el viento; al acercar el teléfono sube el viento
+    { efecto: 'bosque', marco: false },
+
+    // 3 · CORAL — escaneo real de un coral (160 mil puntos con su color)
     { efecto: 'coral', marco: false },
 
-    // antes · ACRECIÓN — el shader "Accretion" de @XorDev (shadertoy.com/view/WcKXDV) sobre la página, en grises
-    //     ajustes: opciones: { 'acrecion': { tamano: 1, escala: 1, velocidad: 1, pasos: 20, brillo: 1 } }
-    //     (pasos baja el costo en teléfonos lentos: 14 o 16 se ve casi igual)
-    //     (el efecto anterior sigue disponible: { efecto: 'estalagmitas' })
-    // { efecto: 'acrecion', marco: false, opciones: { 'acrecion': { brillo: 0.6, mira: true, z: 0.32, tamano: 0.9 } } },
+    // 4 · ESPIRAL — esfera de vidrio con hebras en espiral de colores adentro, girando
+    { efecto: 'espiral', marco: false },
 
-    // 4 · ESPIRAL — esfera de vidrio con espirales adentro, del shader de Matthias Hurrle (@atzedent), flotando sobre la página
-    //     ajustes: opciones: { 'espiral': { tamano: 0.62, z: 0.24, pasos: 60, velocidad: 1 } }
-    //     (pasos baja el costo en teléfonos lentos: 40 se ve casi igual)
-    //     (el efecto anterior sigue disponible: { efecto: 'estalactitas' })
-    { efecto: 'espiral', marco: false, opciones: { 'espiral': { z: 0.4, tamano: 0.68 } } },
+    // 5 · SINAPSIS — neuronas suspendidas; los impulsos viajan por los axones y destellan en las terminales
+    { efecto: 'sinapsis', marco: false },
 
-    // 5 · SINAPSIS — neuronas suspendidas; el impulso viaja por el axón, destella en la sinapsis y la siguiente dispara
-    //     ajustes: opciones: { 'sinapsis': { neuronas: 22, viaje: 0.9 } }
-    { efecto: 'sinapsis', marco: false, opciones: { 'sinapsis': { alto: 0.58 } } },
-
-    // 6 · AGUJERO NEGRO — horizonte de sucesos, anillo de fotones, disco de acreción en espiral y estrellas que caen
-    //     ajustes: opciones: { 'hoyo-negro': { radio: 0.06, disco: 0.36, inclina: 12, estrellas: 1600 } }
-    { efecto: 'hoyo-negro', marco: false, opciones: { 'hoyo-negro': { z: 0.34, inclina: 18 } } }
+    // 6 · AGUJERO NEGRO — disco de acreción que gira más rápido cerca del centro, anillo de fotones y estrellas
+    { efecto: 'hoyo-negro', marco: false }
 
   ]
 };

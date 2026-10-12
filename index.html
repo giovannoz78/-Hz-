@@ -2240,65 +2240,78 @@
   </script>
 </head>
 
-  <!-- CORAL: escaneo real de un coral (160 mil puntos con su color) que se arma sobre la página llegando como polvo.
-       Al acercar el teléfono se desarma en polvo que gira; al alejarlo se vuelve a condensar. Se dibuja con su propio
-       color, por fuera del mapa térmico. -->
+  <!-- NUBE: todas las escenas de [Hz] son nubes de puntos con su propio color (assets/*.bin, generadas con nubes.py;
+       la del coral es un escaneo real). Cada nube llega como polvo y se arma de pie sobre la tarjeta; al acercar
+       el teléfono se desarma en polvo que gira y al alejarlo se vuelve a condensar. Cada escena suma su movimiento:
+       pulsos que recorren la forma (ola), viento que mece lo alto (viento) o giro alrededor de su centro (giro). -->
   <script>
-  AFRAME.registerComponent('coral',{
-    schema:{ src:{default:'./assets/coral.bin'}, tamano:{default:0.8}, punto:{default:0.0042}, arma:{default:4.5}, dispersa:{default:1.0}, brillo:{default:1.15} },
+  AFRAME.registerComponent('nube',{
+    schema:{ src:{default:'./assets/coral.bin'}, tamano:{default:1.0}, punto:{default:0.0042}, arma:{default:4.5}, dispersa:{default:1.0}, brillo:{default:1.15},
+      ola:{default:0}, olaVel:{default:0.35}, olaLargo:{default:1.0}, viento:{default:0}, giro:{default:0}, giroK:{default:0}, giroS:{default:0}, respira:{default:1} },
     init(){
       const T=AFRAME.THREE,d=this.data;
       this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
-      this.u={uTime:{value:0},uDis:{value:1},uViewH:{value:800},uPunto:{value:d.punto},uBrillo:{value:d.brillo}};
-      this.t=0; this.running=false; this.dis=1; this.pts=null;
-      fetch(d.src).then(r=>r.arrayBuffer()).then(buf=>{
+      this.u={uTime:{value:0},uDis:{value:1},uViewH:{value:800},uPunto:{value:d.punto},uBrillo:{value:d.brillo},
+        uOla:{value:d.ola},uOlaVel:{value:d.olaVel},uOlaLargo:{value:d.olaLargo},uViento:{value:d.viento},uGiro:{value:d.giro},uGiroK:{value:d.giroK},uGiroS:{value:d.giroS},uRespira:{value:d.respira}};
+      this.t=0; this.running=false; this.dis=1; this.pts=null; this.cargando=false;
+      this.anchor.addEventListener('targetFound',()=>this.start());
+      this.anchor.addEventListener('targetLost',()=>{ clearTimeout(this._lostT); this._lostT=setTimeout(()=>this.reset(),2000); });
+    },
+    cargar(){
+      // se descarga recién cuando aparece su tarjeta: el teléfono no baja las siete nubes de entrada
+      if(this.cargando) return; this.cargando=true;
+      const T=AFRAME.THREE,d=this.data;
+      fetch(d.src).then(r=>{ if(!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then(buf=>{
         const dv=new DataView(buf), n=dv.getUint32(0,true), E=dv.getFloat32(4,true);
-        const qi=new Int16Array(buf,8,n*3), col=new Uint8Array(buf,8+n*6,n*3);
+        const qi=new Int16Array(buf,8,n*3), col=new Uint8Array(buf,8+n*6,n*4);
         const P=new Float32Array(n*3), R=new Float32Array(n*4);
         for(let i=0;i<n*3;i++) P[i]=qi[i]/32767*E*d.tamano;
         for(let i=0;i<n;i++){ let x=Math.random()*2-1,y=Math.random()*2-1,z=Math.random()*2-1; const l=Math.hypot(x,y,z)||1;
           R[i*4]=x/l; R[i*4+1]=y/l; R[i*4+2]=Math.abs(z/l)*0.8+0.2; R[i*4+3]=Math.random(); }
         const g=new T.BufferGeometry();
-        g.setAttribute('position',new T.BufferAttribute(P,3)); g.setAttribute('aCol',new T.BufferAttribute(col,3,true)); g.setAttribute('aR',new T.BufferAttribute(R,4));
+        g.setAttribute('position',new T.BufferAttribute(P,3)); g.setAttribute('aCol',new T.BufferAttribute(col,4,true)); g.setAttribute('aR',new T.BufferAttribute(R,4));
         this.pts=new T.Points(g,new T.ShaderMaterial({uniforms:this.u,transparent:false,depthWrite:true,depthTest:true,
-          vertexShader:`attribute vec3 aCol; attribute vec4 aR; uniform float uTime,uDis,uViewH,uPunto,uBrillo; varying vec3 vC;
+          vertexShader:`attribute vec4 aCol; attribute vec4 aR; uniform float uTime,uDis,uViewH,uPunto,uBrillo,uOla,uOlaVel,uOlaLargo,uViento,uGiro,uGiroK,uGiroS,uRespira; varying vec3 vC;
             void main(){
-              vec3 p=position;
-              float r=aR.w, dd=clamp(uDis*(0.55+0.9*r)-0.25*r,0.0,1.0); dd=dd*dd*(3.0-2.0*dd);
-              // polvo: cada punto sale en su dirección, sube y gira alrededor del eje de la página
+              vec3 p=position; float s=aCol.a, r=aR.w;
+              // giro alrededor del eje vertical de la escena (giroK 1.5 = como un disco de acreción: lo de adentro gira más rápido)
+              if(uGiro!=0.0){ float w=mix(1.0,1.0-s,uGiroS); float rr=max(length(p.xy),0.03);
+                float a0=uTime*uGiro*w*pow(rr/0.2,-uGiroK); float c0=cos(a0),s0=sin(a0); p.xy=mat2(c0,-s0,s0,c0)*p.xy; }
+              // viento: mece más lo que está más alto
+              if(uViento>0.0){ float h=p.z*p.z*uViento; p.x+=sin(uTime*1.3+position.y*9.0+r)*h*0.06; p.y+=cos(uTime*1.1+position.x*7.0)*h*0.035; }
+              // ola: un pulso de luz que recorre la forma siguiendo su fase
+              float f=fract(s*uOlaLargo-uTime*uOlaVel), ola=uOla*exp(-f*14.0)*step(0.001,s);
+              float dd=clamp(uDis*(0.55+0.9*r)-0.25*r,0.0,1.0); dd=dd*dd*(3.0-2.0*dd);
               vec3 q=p+aR.xyz*dd*(0.12+0.5*r)+vec3(0.0,0.0,dd*0.18*sin(uTime*0.7+r*6.283));
-              float a=dd*(1.2+2.5*r)+uTime*0.25*dd, c=cos(a), s=sin(a); q.xy=mat2(c,-s,s,c)*q.xy;
-              q+=vec3(sin(uTime*0.9+r*40.0),cos(uTime*0.8+r*31.0),sin(uTime*0.6+r*23.0))*0.004*(1.0+dd*6.0);
-              vC=pow(aCol,vec3(0.85))*uBrillo*(1.0+dd*0.35);
+              float a=dd*(1.2+2.5*r)+uTime*0.25*dd, c=cos(a), sn=sin(a); q.xy=mat2(c,-sn,sn,c)*q.xy;
+              q+=vec3(sin(uTime*0.9+r*40.0),cos(uTime*0.8+r*31.0),sin(uTime*0.6+r*23.0))*0.003*(uRespira+dd*8.0);
+              vC=pow(aCol.rgb,vec3(0.85))*uBrillo*(1.0+dd*0.35)+ola*vec3(1.0,0.95,0.85);
               vec4 mv=modelViewMatrix*vec4(q,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
-              gl_PointSize=clamp(uPunto*(1.0-dd*0.45)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,10.0);
+              gl_PointSize=clamp(uPunto*(1.0-dd*0.45+ola*0.8)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,10.0);
               gl_Position=projectionMatrix*mv; }`,
           fragmentShader:`precision mediump float; varying vec3 vC; void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25) discard; gl_FragColor=vec4(vC*(1.0-e*1.2),1.0); }`}));
         this.pts.frustumCulled=false; this.pts.visible=this.running;
-        // en modo glow se dibuja después del mapa térmico, con su color real
+        // en modo glow se dibuja después del paso de color, con su color real
         const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.pts.layers.set(2); window.hzCapa2=true; }
-        this.el.object3D.add(this.pts);
-      }).catch(e=>console.warn('coral: no se pudo leer',d.src,e));
-      this.anchor.addEventListener('targetFound',()=>this.start());
-      this.anchor.addEventListener('targetLost',()=>{ clearTimeout(this._lostT); this._lostT=setTimeout(()=>this.reset(),2000); });
+        this.el.object3D.add(this.pts); this.t=0; this.dis=1;
+      }).catch(e=>{ this.cargando=false; console.warn('[Hz] no se pudo leer la nube',d.src,e); });
     },
-    start(){ clearTimeout(this._lostT); if(this.running) return; this.running=true; this.t=0; this.dis=1; if(this.pts) this.pts.visible=true; },
+    start(){ clearTimeout(this._lostT); this.cargar(); if(this.running) return; this.running=true; this.t=0; this.dis=1; if(this.pts) this.pts.visible=true; },
     reset(){ this.running=false; if(this.pts) this.pts.visible=false; },
     tick(t,dt){
       if(!this.running){ if(this.anchor.components&&this.anchor.components['mindar-image-target']&&this.anchor.object3D.visible) this.start(); if(!this.running) return; }
-      if(this.pts&&!this.pts.visible) this.pts.visible=true;
+      if(!this.pts) return; if(!this.pts.visible) this.pts.visible=true;
       const d=this.data, st=Math.min(0.05,(dt||16)/1000); this.t+=st;
       // se arma al aparecer; la cercanía lo desarma
       let k=+window.hzCalor; if(!isFinite(k)) k=0.5;
       const intro=1-Math.min(1,this.t/d.arma), cerca=Math.min(1,Math.max(0,(k-0.78)/0.2))*d.dispersa;
       const meta=Math.max(intro*intro*(3-2*intro),cerca);
       this.dis+=(meta-this.dis)*Math.min(1,st*(meta>this.dis?3.0:1.4));
-      this.u.uDis.value=this.dis; this.u.uTime.value=this.t; window.hzCoralDis=this.dis;
+      this.u.uDis.value=this.dis; this.u.uTime.value=this.t; window.hzCoralDis=this.dis; window.hzNubeDis=this.dis;
       const r=this.el.sceneEl.renderer; if(r) this.u.uViewH.value=r.getContext().drawingBufferHeight;
     }
   });
   </script>
-<body>
   <!-- BOSQUE EN NUBE DE PUNTOS: árboles generados por ramificación, como un escaneo LiDAR; el bosque crece
        desde la página, se mece con el viento y lo recorre una línea de escaneo. -->
   <script>
@@ -3310,6 +3323,20 @@
         return {anchor:'', inner:marco(e,i)+'<a-gltf-model src="#'+M+'" '+tr(e,'0 0 0',0.7)+' brillo-malla="'+esc(g)+'" construye-aristas="'+esc(a)+'" brillo-malla__aristas="'+esc(ga)+'" '+(e.girar===false?'':giro)+'></a-gltf-model>'+
           (e.red===false?'':'<a-entity class="hz-plexus" position="0 0.9 0" visible="false" plexus="'+esc(attr('plexus',e))+'"></a-entity>')}; }
     };
+
+    // NUBES DE PUNTOS: las siete escenas son nubes con su color, cada una con su movimiento.
+    // Los efectos anteriores (líneas y shaders) siguen disponibles con el sufijo -lineas, por ejemplo { efecto: 'micelio-lineas' }.
+    const NUBES={
+      micelio:     {src:'./assets/micelio.bin',    punto:0.0034, ola:0.9, olaVel:0.22, olaLargo:1.6},
+      espejo:      {src:'./assets/espejo.bin',     punto:0.0036, ola:0.8, olaVel:0.30, olaLargo:2.0},
+      bosque:      {src:'./assets/bosque.bin',     punto:0.0036, viento:1.0, ola:0.35, olaVel:0.18, olaLargo:1.0},
+      coral:       {src:'./assets/coral.bin',      punto:0.0042, tamano:0.8},
+      espiral:     {src:'./assets/espiral.bin',    punto:0.0032, giro:0.25, ola:0.6, olaVel:0.25, olaLargo:2.0},
+      sinapsis:    {src:'./assets/sinapsis.bin',   punto:0.0030, ola:1.4, olaVel:0.45, olaLargo:1.0},
+      'hoyo-negro':{src:'./assets/hoyo-negro.bin', punto:0.0032, giro:0.9, giroK:1.5, giroS:1, brillo:1.25}
+    };
+    Object.keys(NUBES).forEach(n=>{ if(EFECTOS[n]) EFECTOS[n+'-lineas']=EFECTOS[n];
+      EFECTOS[n]=(e,i)=>({anchor:'', inner:marco(e,i,0.5)+'<a-entity nube="'+esc(attr('nube',Object.assign({},e,{opciones:Object.assign({},e.opciones,{nube:Object.assign({},(e.opciones||{})[n]||{},(e.opciones||{}).nube||{})})}),NUBES[n]))+'"></a-entity>'}); });
 
     ESC.forEach((e,i)=>{
       if(!e || (preview && i!==VER)) return;
