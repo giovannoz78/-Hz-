@@ -23,14 +23,15 @@ window.HZ = {
   mind: './mindar/targets.mind',
 
   // paleta. modo 'glow': toda la imagen se colorea por su brillo con un mapa de calor.
-  //   mapa: 'termico' (imagen satelital infrarroja: azul, cian, verde, amarillo, rojo, rojo oscuro en lo más intenso)
+  //   mapa: 'coral' (nube de puntos en color natural: ámbar, cian, óxido, salvia, azul y oro, en manchas que siguen a la tarjeta)
+  //         'termico' (imagen satelital infrarroja: azul, cian, verde, amarillo, rojo, rojo oscuro en lo más intenso)
   //         'inferno' · 'arbol' · 'montana' · o una lista propia de 6 colores, de lo tenue a lo intenso
   //   halo: velo suave alrededor de los trazos (0 = nada, 1 = suave)
   //   camaraTermica: la cámara en grises con sus zonas más claras en calor, como una imagen satelital (false = cámara en grises)
   //   umbral: desde qué brillo de la cámara empieza el calor (0.5 = más zonas calientes, 0.75 = solo luces fuertes)
   //   cercania: cuánto calienta acercar el teléfono (0 = nada, 1 = normal, 2 = mucho)
   // modo 'bn' vuelve al blanco y negro puro.
-  paleta:  { modo: 'glow', mapa: 'termico', halo: 1.0, contraste: 1.0, camaraTermica: false, umbral: 0.62, cercania: 1.0, camara: true },
+  paleta:  { modo: 'glow', mapa: 'coral', halo: 0.8, contraste: 1.0, camaraTermica: false, umbral: 0.62, cercania: 1.0, camara: true },
 
   // sonido: cada escena tiene su capa sintetizada en el teléfono; arranca con el primer toque en pantalla (o el botón 🔊).
   // false lo apaga. volumen: 0 a 1.

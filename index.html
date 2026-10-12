@@ -2482,7 +2482,7 @@
       // red: arriba + reflejo + hilos verticales, todo en un solo buffer de líneas con color por vértice
       const maxSeg=M*(M-1)+M; this.lp=new Float32Array(maxSeg*6); this.lc=new Float32Array(maxSeg*6);
       const lg=new T.BufferGeometry(); lg.setAttribute('position',new T.BufferAttribute(this.lp,3)); lg.setAttribute('color',new T.BufferAttribute(this.lc,3)); lg.setDrawRange(0,0);
-      this.lineas=new T.LineSegments(lg,new T.LineBasicMaterial(Object.assign({vertexColors:true,transparent:true,depthWrite:false},LUZ))); this.lineas.frustumCulled=false; this.root.add(this.lineas);
+      this.lineas=new T.LineSegments(lg,new T.LineBasicMaterial(Object.assign({vertexColors:true,transparent:true,depthWrite:false},LUZ))); this.lineas.material.color.setRGB(2.4,2.4,2.4); this.lineas.frustumCulled=false; this.root.add(this.lineas);
       // nodos y sus reflejos
       const S=64,c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d'); const gr=x.createRadialGradient(S/2,S/2,0,S/2,S/2,S/2);
       gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(0.3,'rgba(255,255,255,0.7)'); gr.addColorStop(1,'rgba(255,255,255,0)'); x.fillStyle=gr; x.fillRect(0,0,S,S);
@@ -2493,8 +2493,8 @@
       const ptsMat=new T.ShaderMaterial(Object.assign({uniforms:this.pu,transparent:true,depthWrite:false,
         vertexShader:`attribute float aC; attribute float aS; uniform float uViewH; varying float vC;
           void main(){ vC=aC; vec4 mv=modelViewMatrix*vec4(position,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
-            gl_PointSize=aS>0.0?clamp(aS*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,24.0):0.0; gl_Position=projectionMatrix*mv; }`,
-        fragmentShader:`precision mediump float; uniform sampler2D uMap; uniform float uFade; varying float vC; void main(){ float a=texture2D(uMap,gl_PointCoord).a*vC*uFade; if(a<0.004) discard; gl_FragColor=vec4(vec3(a),0.0); }`},LUZ));
+            gl_PointSize=aS>0.0?clamp(1.4*aS*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,24.0):0.0; gl_Position=projectionMatrix*mv; }`,
+        fragmentShader:`precision mediump float; uniform sampler2D uMap; uniform float uFade; varying float vC; void main(){ float a=texture2D(uMap,gl_PointCoord).a*vC*uFade; if(a<0.004) discard; gl_FragColor=vec4(vec3(min(a*1.8,1.0)),0.0); }`},LUZ));
       this.puntos=new T.Points(pg,ptsMat); this.puntos.frustumCulled=false; this.root.add(this.puntos);
       // reloj de arena: granos que bajan en embudo, cruzan el horizonte por el centro y se abren abajo
       const A=d.arena; this.ar=new Float32Array(A*3); for(let i=0;i<A;i++){ this.ar[i*3]=this.rnd(); this.ar[i*3+1]=this.rnd()*6.283; this.ar[i*3+2]=0.5+this.rnd(); }
@@ -3292,35 +3292,51 @@
         let rt=null, vidEl=null, vidTex=null;
         const u={tScene:{value:null},tCam:{value:null},uCamOn:{value:0},uCan:{value:new T.Vector4(0,0,1,1)},uVid:{value:new T.Vector4(0,0,1,1)},
           uPx:{value:new T.Vector2()},uHalo:{value:P.halo==null?1.0:P.halo},uContraste:{value:P.contraste||1.0},
-          uCalor:{value:0.5},uCercania:{value:P.cercania==null?1.0:P.cercania},uUmbral:{value:P.umbral==null?0.62:P.umbral}};
+          uCalor:{value:0.5},uCercania:{value:P.cercania==null?1.0:P.cercania},uUmbral:{value:P.umbral==null?0.62:P.umbral},uNat:{value:P.mapa==='coral'?1:0},uAnc:{value:new T.Vector3(0.5,0.5,0.5)},uT:{value:0}};
         // mapas de color: de lo tenue a lo intenso
         const MAPAS={
           termico:['#1f4fe0','#2ec4ef','#4fd94a','#f6e23a','#ec4a1c','#a3121a'],   // imagen satelital infrarroja
           inferno:['#120428','#3d0f73','#8f1f8f','#dc3a3a','#f7901e','#fde65e'],
           arbol:  ['#0f243b','#2e6496','#4d9ecc','#5ccccc','#70ebab','#8cf08a'],
-          montana:['#020930','#123355','#225173','#784371','#a64071','#e74e7c']};
+          montana:['#020930','#123355','#225173','#784371','#a64071','#e74e7c'],
+          coral:  ['#c98a3a','#4ab3cf','#a5502e','#9fb46e','#3f6fc0','#e4b866']};   // nube de puntos natural: ámbar, cian, óxido, salvia, azul, oro
         const M=(Array.isArray(P.mapa)?P.mapa:MAPAS[P.mapa||'termico'])||MAPAS.termico;
         M.forEach((h,i)=>{ u['uC'+i]={value:new T.Color(h)}; });
         const q=new T.Mesh(new T.PlaneGeometry(2,2),new T.ShaderMaterial({uniforms:u,depthTest:false,depthWrite:false,transparent:true,
           blending:T.CustomBlending,blendEquation:T.AddEquation,blendSrc:T.OneFactor,blendDst:T.OneMinusSrcAlphaFactor,blendSrcAlpha:T.OneFactor,blendDstAlpha:T.OneMinusSrcAlphaFactor,
           vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }',
           fragmentShader:`precision highp float; varying vec2 vUv;
-            uniform sampler2D tScene,tCam; uniform float uCamOn,uHalo,uContraste,uCalor,uCercania,uUmbral; uniform vec2 uPx; uniform vec4 uCan,uVid;
+            uniform sampler2D tScene,tCam; uniform float uCamOn,uHalo,uContraste,uCalor,uCercania,uUmbral,uNat,uT; uniform vec3 uAnc; uniform vec2 uPx; uniform vec4 uCan,uVid;
             uniform vec3 uC0,uC1,uC2,uC3,uC4,uC5;
             float lum(vec3 c){ return max(c.r,max(c.g,c.b)); }
+            float hs(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+            float vn(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f);
+              return mix(mix(hs(i),hs(i+vec2(1,0)),f.x),mix(hs(i+vec2(0,1)),hs(i+vec2(1,1)),f.x),f.y); }
+            vec3 pal(float k){ k=fract(k)*6.0; float f=fract(k); f=f*f*(3.0-2.0*f); int i=int(floor(k));
+              vec3 a=i==0?uC0:i==1?uC1:i==2?uC2:i==3?uC3:i==4?uC4:uC5; vec3 b=i==0?uC1:i==1?uC2:i==2?uC3:i==3?uC4:i==4?uC5:uC0; return mix(a,b,f); }
             vec3 ramp(float k){ k=clamp(k,0.0,1.0);
               return k<0.2?mix(uC0,uC1,k/0.2):k<0.4?mix(uC1,uC2,(k-0.2)/0.2):k<0.6?mix(uC2,uC3,(k-0.4)/0.2):k<0.8?mix(uC3,uC4,(k-0.6)/0.2):mix(uC4,uC5,(k-0.8)/0.2); }
             void main(){
-              float shift=(uCalor-0.5)*0.4*uCercania;                                   // cerca = más caliente, lejos = más frío
+              float shift=(uCalor-0.5)*0.12*uCercania;                                   // cerca = más caliente, lejos = más frío
               vec4 s=texture2D(tScene,vUv); float L=pow(clamp(lum(s.rgb),0.0,1.0),1.0/uContraste);
               float h=0.0;
               for(int i=0;i<12;i++){ float a=float(i)*0.5236; vec2 d=vec2(cos(a),sin(a));
                 h+=lum(texture2D(tScene,vUv+d*uPx*6.0).rgb)*0.5+lum(texture2D(tScene,vUv+d*uPx*16.0).rgb)*0.5; }
               h/=12.0;
-              vec3 tono=ramp(pow(L,0.7)*1.2+shift);
+              vec3 tono=ramp(min(pow(L,0.8)*0.75+shift,0.7));
+              vec3 natc=vec3(0.0);
+              if(uNat>0.5){
+                // color natural de nube de puntos: manchas de color que viajan con la tarjeta, grano fino como un escaneo
+                vec2 w=(vUv-uAnc.xy)/max(uAnc.z,0.05);
+                float n=vn(w*4.5+uT*0.03)*0.5+vn(w*11.0-uT*0.05)*0.3+vn(w*26.0)*0.2;
+                natc=pal(n*2.0+0.22*(hs(floor(gl_FragCoord.xy*0.5))-0.5));
+                natc=mix(natc,vec3(dot(natc,vec3(0.3,0.5,0.2)))*vec3(1.05,0.95,0.85),0.28);
+                natc=mix(natc,vec3(0.93,0.88,0.80),smoothstep(0.8,1.0,L)*0.35);
+                tono=natc*(0.35+0.85*pow(L,0.75));
+              }
               float a=smoothstep(0.03,0.22,L);
               float hk=clamp(pow(h,0.7)*1.3,0.0,1.0);
-              vec3 tg=mix(uC0,uC2,clamp(hk+shift,0.0,1.0));
+              vec3 tg=uNat>0.5?natc*0.8:mix(uC0,uC1,clamp(hk+shift,0.0,1.0));
               float ag=clamp(hk*uHalo*0.55,0.0,0.6)*(1.0-a);
               vec3 col=tono*a+tg*ag; float al=clamp(a+ag,0.0,1.0);
               if(uCamOn>0.5){
@@ -3355,6 +3371,7 @@
           document.querySelectorAll('.hz-ancla').forEach(an=>{ const o=an.object3D; if(!o.visible||frac>=0) return;
             o.updateMatrixWorld(); v0.set(0,0,0).applyMatrix4(o.matrixWorld).project(camera); v1.set(0.5,0,0).applyMatrix4(o.matrixWorld).project(camera); v2.set(0,0.5,0).applyMatrix4(o.matrixWorld).project(camera);
             frac=Math.max(Math.hypot(v1.x-v0.x,v1.y-v0.y),Math.hypot(v2.x-v0.x,v2.y-v0.y)); });
+          if(frac>=0&&isFinite(frac)) u.uAnc.value.set(v0.x*0.5+0.5,v0.y*0.5+0.5,frac); u.uT.value=performance.now()/1000;
           const meta=(frac<0||!isFinite(frac))?0.5:Math.min(1,Math.max(0,(frac-0.35)/0.6));
           calor+=(meta-calor)*0.06; if(!isFinite(calor)) calor=0.5; u.uCalor.value=calor; window.hzCalor=calor;
           document.querySelectorAll('.hz-carta').forEach(e=>e.object3D.traverse(o=>o.layers.set(1)));
