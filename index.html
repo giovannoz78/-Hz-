@@ -3327,12 +3327,13 @@
     // NUBES DE PUNTOS: las siete escenas son nubes con su color, cada una con su movimiento.
     // Los efectos anteriores (líneas y shaders) siguen disponibles con el sufijo -lineas, por ejemplo { efecto: 'micelio-lineas' }.
     const NUBES={
-      micelio:     {src:'./assets/micelio.bin',    punto:0.0034, ola:0.9, olaVel:0.22, olaLargo:1.6},
-      espejo:      {src:'./assets/espejo.bin',     punto:0.0036, ola:0.8, olaVel:0.30, olaLargo:2.0},
-      bosque:      {src:'./assets/bosque.bin',     punto:0.0036, viento:1.0, ola:0.35, olaVel:0.18, olaLargo:1.0},
+      micelio:     {src:'./assets/micelio.bin',    punto:0.0026, ola:0.9, olaVel:0.18, olaLargo:1.4},
+      mosca:       {src:'./assets/mosca.bin',      punto:0.0034, ola:0.25, olaVel:0.12, olaLargo:1.0, brillo:1.2},
+      espejo:      {src:'./assets/espejo.bin',     punto:0.0028, giro:0.35, giroK:1.0, ola:0.7, olaVel:0.25, olaLargo:1.5},
+      bosque:      {src:'./assets/bosque.bin',     punto:0.0026, viento:0.8, ola:0.6, olaVel:0.15, olaLargo:1.0},
       coral:       {src:'./assets/coral.bin',      punto:0.0042, tamano:0.8},
-      espiral:     {src:'./assets/espiral.bin',    punto:0.0032, giro:0.25, ola:0.6, olaVel:0.25, olaLargo:2.0},
-      sinapsis:    {src:'./assets/sinapsis.bin',   punto:0.0030, ola:1.4, olaVel:0.45, olaLargo:1.0},
+      espiral:     {src:'./assets/espiral.bin',    punto:0.0028, giro:0.3, ola:0.6, olaVel:0.22, olaLargo:2.0},
+      sinapsis:    {src:'./assets/sinapsis.bin',   punto:0.0028, ola:1.4, olaVel:0.45, olaLargo:1.0},
       'hoyo-negro':{src:'./assets/hoyo-negro.bin', punto:0.0032, giro:0.9, giroK:1.5, giroS:1, brillo:1.25}
     };
     Object.keys(NUBES).forEach(n=>{ if(EFECTOS[n]) EFECTOS[n+'-lineas']=EFECTOS[n];
@@ -3524,6 +3525,14 @@
             g.a.gain.setTargetAtTime(0.03+0.25*e,t,0.3); hojas.a.gain.setTargetAtTime(0.004+0.09*e*e*(0.6+0.4*Math.random()),t,0.08);
             raf.o.frequency.setTargetAtTime(0.1+0.5*e,t,0.5); setTimeout(upd,90); }; upd();
           return ()=>{ vivo=false; [n,g,hojas].forEach(x=>x.s.stop()); raf.o.stop(); }; },
+        mosca:()=>{ // aleteo: un zumbido grave que late, apenas audible, que se afina al acercarse
+          const c=S.ctx, z=osc('sawtooth',196,0.0,null), z2=osc('sawtooth',198.5,0.0,null), f=c.createBiquadFilter(); f.type='bandpass'; f.frequency.value=600; f.Q.value=1.2;
+          z.a.disconnect(); z2.a.disconnect(); z.a.connect(f); z2.a.connect(f); f.connect(S.lp);
+          const tr=osc('sine',11,0.0,null); tr.a.disconnect(); tr.a.connect(z.a.gain); tr.a.connect(z2.a.gain);
+          let vivo=true; const upd=()=>{ if(!vivo) return; let k=+window.hzCalor; if(!isFinite(k)) k=0.5; const t=c.currentTime, d=+window.hzNubeDis||0;
+            const g=0.012+0.05*k*k+0.04*d; z.a.gain.setTargetAtTime(g,t,0.2); z2.a.gain.setTargetAtTime(g,t,0.2); tr.a.gain.setTargetAtTime(g*0.8,t,0.2);
+            f.frequency.setTargetAtTime(450+900*k+1200*d,t,0.3); setTimeout(upd,100); }; upd();
+          return ()=>{ vivo=false; [z,z2,tr].forEach(x=>x.o.stop()); }; },
         coral:()=>{ // fondo marino: un grave que respira; al desarmarse el coral, burbujas y grano que se abren
           const c=S.ctx, sub=osc('sine',49,0.0,null), sub2=osc('sine',73.5,0.0,null), mar=ruido(null,0.0,'lowpass',320,0.9), polvo=ruido(null,0.0,'bandpass',3200,2.5);
           let vivo=true; const burb=()=>{ if(!vivo) return; const k=+window.hzCoralDis||0; if(Math.random()<0.25+0.75*k){ const f=300+Math.random()*900*(0.5+k); golpe(f,0.07+Math.random()*0.12,0.025+0.07*k,'sine',f*(1.8+Math.random()),Math.random()<0.4); }

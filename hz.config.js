@@ -51,22 +51,23 @@ window.HZ = {
     //   ola / olaVel: pulsos de luz que la recorren · viento: cuánto se mece · giro: velocidad de giro
     // Los efectos anteriores siguen disponibles con -lineas: { efecto: 'micelio-lineas' }
 
-    // 0 · MICELIO — red de hifas sobre la página, con hongos que se levantan; pulsos de luz que salen de las esporas
+    // 0 · MICELIO — trama circular de hifas finísimas sobre la página; pulsos de luz que salen de los centros
     { efecto: 'micelio', marco: false },
 
-    // 1 · ESPEJO — así arriba, como abajo: una ramificación dorada que sube y su reflejo azul que baja, unidas por arena que cae
-    { efecto: 'espejo', marco: false },
+    // 1 · MOSCA — tomografía de una mosca en nube de puntos, violeta y naranja, de pie sobre la tarjeta
+    //     (el vórtice doble "así arriba, como abajo" sigue disponible: { efecto: 'espejo' })
+    { efecto: 'mosca', marco: false },
 
-    // 2 · BOSQUE — árboles que se mecen con el viento; al acercar el teléfono sube el viento
+    // 2 · BOSQUE — un claro circular de fustes verticales de puntos que se mecen; al acercar el teléfono sube el viento
     { efecto: 'bosque', marco: false },
 
     // 3 · CORAL — escaneo real de un coral (160 mil puntos con su color)
     { efecto: 'coral', marco: false },
 
-    // 4 · ESPIRAL — esfera de vidrio con hebras en espiral de colores adentro, girando
+    // 4 · ESPIRAL — esfera hecha de espirales que van de polo a polo, con un núcleo que gira al revés
     { efecto: 'espiral', marco: false },
 
-    // 5 · SINAPSIS — neuronas suspendidas; los impulsos viajan por los axones y destellan en las terminales
+    // 5 · SINAPSIS — núcleos incandescentes unidos por arcos de polvo; los impulsos viajan de uno a otro
     { efecto: 'sinapsis', marco: false },
 
     // 6 · AGUJERO NEGRO — disco de acreción que gira más rápido cerca del centro, anillo de fotones y estrellas
