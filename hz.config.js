@@ -65,7 +65,7 @@ window.HZ = {
     { efecto: 'coral', marco: false },
 
 
-    // 4 · TERRENO — relieve en malla de alambre cian: montañas que respiran y se desplazan lento; al acercar el teléfono se levantan
+    // 4 · TERRENO — relieve en nube de puntos que dibuja una malla cian: montañas que respiran y se desplazan lento; al acercar el teléfono se levantan
     //     ajustes: opciones: { 'terreno': { ancho: 1.3, alto: 0.2, lineas: 72, velocidad: 1, brillo: 1 } }
     //     (la esfera de espirales sigue disponible: { efecto: 'espiral' })
     { efecto: 'terreno', marco: false },

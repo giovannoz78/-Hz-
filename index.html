@@ -2240,24 +2240,25 @@
   </script>
 </head>
 
-  <!-- TERRENO: relieve en malla de alambre, cian sobre la oscuridad. El relieve respira y se desplaza lento;
+  <!-- TERRENO: relieve en nube de puntos que dibuja una malla, cian sobre la oscuridad. El relieve respira y se desplaza lento;
        al acercar el teléfono las montañas se levantan. Se dibuja con su propio color, por fuera del mapa térmico. -->
   <script>
   AFRAME.registerComponent('terreno',{
-    schema:{ ancho:{default:1.3}, lineas:{default:72}, pasos:{default:160}, alto:{default:0.2}, velocidad:{default:1}, brillo:{default:1} },
+    schema:{ ancho:{default:1.3}, lineas:{default:72}, pasos:{default:340}, polvo:{default:40000}, punto:{default:0.0026}, alto:{default:0.2}, velocidad:{default:1}, brillo:{default:1} },
     init(){
       const T=AFRAME.THREE,d=this.data;
       this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
       const P=[], N=d.lineas, M=d.pasos, A=d.ancho/2;
-      // líneas en las dos direcciones: cada segmento une dos puntos vecinos de la grilla
+      // nube de puntos: puntos densos sobre las líneas de la grilla (la malla) y un polvo tenue sobre la superficie
+      const K=[];
       for(let dir=0;dir<2;dir++) for(let i=0;i<=N;i++){ const u=-A+2*A*i/N;
-        for(let j=0;j<M;j++){ const v0=-A+2*A*j/M, v1=-A+2*A*(j+1)/M;
-          if(dir===0) P.push(u,v0,0, u,v1,0); else P.push(v0,u,0, v1,u,0); } }
-      const g=new T.BufferGeometry(); g.setAttribute('position',new T.Float32BufferAttribute(P,3));
-      this.u={uTime:{value:0},uAlto:{value:d.alto},uFade:{value:0},uCerca:{value:0.5},uA:{value:A},uBrillo:{value:d.brillo}};
-      this.mesh=new T.LineSegments(g,new T.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:false,depthTest:true,
+        for(let j=0;j<=M;j++){ const v=-A+2*A*(j+Math.random()*0.6)/M; if(dir===0) P.push(u,v,0); else P.push(v,u,0); K.push(1); } }
+      for(let i=0;i<d.polvo;i++){ P.push(-A+2*A*Math.random(),-A+2*A*Math.random(),0); K.push(0.35); }
+      const g=new T.BufferGeometry(); g.setAttribute('position',new T.Float32BufferAttribute(P,3)); g.setAttribute('aK',new T.Float32BufferAttribute(K,1));
+      this.u={uTime:{value:0},uAlto:{value:d.alto},uFade:{value:0},uCerca:{value:0.5},uA:{value:A},uBrillo:{value:d.brillo},uPunto:{value:d.punto},uViewH:{value:800}};
+      this.mesh=new T.Points(g,new T.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:false,depthTest:true,
         blending:T.CustomBlending,blendEquation:T.AddEquation,blendSrc:T.OneFactor,blendDst:T.OneFactor,blendSrcAlpha:T.ZeroFactor,blendDstAlpha:T.OneFactor,
-        vertexShader:`uniform float uTime,uAlto,uFade,uCerca,uA; varying float vH; varying float vE;
+        vertexShader:`attribute float aK; uniform float uTime,uAlto,uFade,uCerca,uA,uPunto,uViewH; varying float vH; varying float vE;
           vec2 h2(vec2 p){ p=vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3))); return -1.0+2.0*fract(sin(p)*43758.5453); }
           float gn(vec2 p){ vec2 i=floor(p),f=fract(p); vec2 u=f*f*(3.0-2.0*f);
             return mix(mix(dot(h2(i),f),dot(h2(i+vec2(1,0)),f-vec2(1,0)),u.x),mix(dot(h2(i+vec2(0,1)),f-vec2(0,1)),dot(h2(i+vec2(1,1)),f-vec2(1,1)),u.x),u.y); }
@@ -2271,11 +2272,14 @@
             h*=mix(0.25,1.0,banda);
             float borde=smoothstep(1.0,0.72,max(abs(q.x),abs(q.y)));
             p.z=max(0.0,h)*uAlto*(0.75+uCerca*0.7)*borde*uFade+0.002;
-            vH=clamp(p.z/(uAlto*0.9),0.0,1.0); vE=borde*uFade;
-            gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0); }`,
+            vH=clamp(p.z/(uAlto*0.9),0.0,1.0); vE=borde*uFade*aK;
+            vec4 mv=modelViewMatrix*vec4(p,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
+            gl_PointSize=clamp(uPunto*(0.6+0.4*aK)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,6.0);
+            gl_Position=projectionMatrix*mv; }`,
         fragmentShader:`precision mediump float; uniform float uBrillo; varying float vH; varying float vE;
           void main(){ vec3 bajo=vec3(0.05,0.32,0.38), alto=vec3(0.45,0.95,1.0);
-            vec3 c=mix(bajo,alto,pow(vH,0.8))*(0.55+0.6*vH)*vE*uBrillo; gl_FragColor=vec4(c,0.0); }`}));
+            vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25) discard;
+            vec3 c=mix(bajo,alto,pow(vH,0.8))*(0.6+0.7*vH)*vE*uBrillo*(1.0-e*2.5); gl_FragColor=vec4(c,0.0); }`}));
       this.mesh.frustumCulled=false; this.mesh.visible=false;
       const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.mesh.layers.set(2); window.hzCapa2=true; }
       this.el.object3D.add(this.mesh);
@@ -2290,6 +2294,7 @@
       const st=Math.min(0.05,(dt||16)/1000); this.t+=st;
       this.u.uTime.value=this.t*this.data.velocidad; this.u.uFade.value=Math.min(1,this.t/3);
       let k=+window.hzCalor; if(!isFinite(k)) k=0.5; this.u.uCerca.value+=(k-this.u.uCerca.value)*Math.min(1,st*1.5);
+      const r=this.el.sceneEl.renderer; if(r) this.u.uViewH.value=r.getContext().drawingBufferHeight;
     }
   });
   </script>
