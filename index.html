@@ -2241,6 +2241,98 @@
 </head>
 
 <body>
+  <!-- BOSQUE EN NUBE DE PUNTOS: árboles generados por ramificación, como un escaneo LiDAR; el bosque crece
+       desde la página, se mece con el viento y lo recorre una línea de escaneo. -->
+  <script>
+  AFRAME.registerComponent('bosque',{
+    schema:{ arboles:{default:16}, area:{default:0.42}, alto:{default:0.42}, puntos:{default:26000}, crece:{default:8}, escaneo:{default:5}, viento:{default:1}, seed:{default:31} },
+    init(){
+      const T=AFRAME.THREE,d=this.data;
+      this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
+      let sd=d.seed*48271+11; const rnd=()=>{ sd=(sd*48271)%2147483647; return sd/2147483647; };
+      const P=[],B=[],Hh=[],R=[];
+      const push=(x,y,z,b,h)=>{ P.push(x,y,z); B.push(b); Hh.push(h); R.push(rnd()); };
+      const presupuesto=d.puntos;
+      // posiciones de los árboles, separados entre sí
+      const pos=[]; let k=0;
+      while(pos.length<d.arboles && k++<600){ const a=rnd()*6.283, r=Math.sqrt(rnd())*d.area; const x=Math.cos(a)*r, y=Math.sin(a)*r;
+        if(pos.every(p=>Math.hypot(p[0]-x,p[1]-y)>0.09)) pos.push([x,y]); }
+      const ppa=Math.floor(presupuesto*0.82/pos.length);
+      const v=new T.Vector3(), tmp=new T.Vector3();
+      pos.forEach(([x0,y0],ti)=>{
+        const H=d.alto*(0.45+0.55*rnd()), pino=rnd()<0.45;
+        const lista=[];                                                         // segmentos [a,b,grosor,profundidad]
+        if(pino){
+          // conífera: tronco recto y gradas de ramas cortas que bajan
+          lista.push([[x0,y0,0],[x0,y0,H],0.006,0]);
+          const gradas=7+Math.floor(rnd()*4);
+          for(let g=0;g<gradas;g++){ const z=H*(0.25+0.72*g/gradas), L=H*0.32*(1-g/gradas)+0.01, n=6+Math.floor(rnd()*3);
+            for(let j=0;j<n;j++){ const an=j/n*6.283+rnd()*0.6+g; lista.push([[x0,y0,z],[x0+Math.cos(an)*L,y0+Math.sin(an)*L,z-L*0.35],0.003,2]); } }
+        } else {
+          // latifoliada: ramificación recursiva
+          const rama=(a,dir,len,prof)=>{ const b=[a[0]+dir.x*len,a[1]+dir.y*len,a[2]+dir.z*len]; lista.push([a,b,0.007*Math.pow(0.6,prof),prof]);
+            if(prof>=4) return; const hijos=2+(rnd()<0.4?1:0);
+            for(let h=0;h<hijos;h++){ const nd=dir.clone(); const ax=tmp.set(rnd()-0.5,rnd()-0.5,rnd()*0.2).cross(dir).normalize();
+              nd.applyAxisAngle(ax,0.35+rnd()*0.5).applyAxisAngle(dir,rnd()*6.283); nd.z=Math.max(nd.z,0.15); nd.normalize();
+              rama(b,nd,len*(0.62+rnd()*0.15),prof+1); } };
+          rama([x0,y0,0],new T.Vector3((rnd()-0.5)*0.15,(rnd()-0.5)*0.15,1).normalize(),H*0.42,0);
+        }
+        // reparto de puntos: corteza en los segmentos, follaje en las puntas
+        const largo=lista.reduce((s,q)=>s+Math.hypot(q[1][0]-q[0][0],q[1][1]-q[0][1],q[1][2]-q[0][2]),0);
+        const nCorteza=Math.floor(ppa*(pino?0.45:0.35)), nHoja=ppa-nCorteza;
+        lista.forEach(q=>{ const L=Math.hypot(q[1][0]-q[0][0],q[1][1]-q[0][1],q[1][2]-q[0][2]), n=Math.max(2,Math.round(nCorteza*L/largo));
+          for(let i=0;i<n;i++){ const t=rnd(), a=rnd()*6.283, r=q[2]*Math.sqrt(rnd());
+            const x=q[0][0]+(q[1][0]-q[0][0])*t+Math.cos(a)*r, y=q[0][1]+(q[1][1]-q[0][1])*t+Math.sin(a)*r, z=q[0][2]+(q[1][2]-q[0][2])*t;
+            push(x,y,z,0.35+0.15*rnd(),z/H); } });
+        const puntas=lista.filter(q=>q[3]>=(pino?2:3));
+        for(let i=0;i<nHoja;i++){ const q=puntas[Math.floor(rnd()*puntas.length)]; const c=q[1], s=pino?0.022:0.04;
+          v.set(rnd()*2-1,rnd()*2-1,rnd()*2-1); if(v.lengthSq()>1){ i--; continue; } v.multiplyScalar(s);
+          push(c[0]+v.x,c[1]+v.y,Math.max(0.004,c[2]+v.z*0.8),0.6+0.4*rnd(),Math.min(1,(c[2]+v.z)/H)); }
+      });
+      // suelo: el plano de la página escaneado, con matas de pasto
+      const nSuelo=presupuesto-B.length;
+      for(let i=0;i<nSuelo;i++){ const a=rnd()*6.283, r=Math.sqrt(rnd())*(d.area+0.06), x=Math.cos(a)*r, y=Math.sin(a)*r;
+        const pasto=rnd()<0.25; push(x,y,pasto?rnd()*0.018:0.002,pasto?0.3+0.2*rnd():0.12+0.12*rnd(),0); }
+      const g=new T.BufferGeometry();
+      g.setAttribute('position',new T.Float32BufferAttribute(P,3)); g.setAttribute('aB',new T.Float32BufferAttribute(B,1));
+      g.setAttribute('aH',new T.Float32BufferAttribute(Hh,1)); g.setAttribute('aR',new T.Float32BufferAttribute(R,1));
+      this.u={uTime:{value:0},uG:{value:0},uScan:{value:-1},uFade:{value:0},uViewH:{value:800},uViento:{value:d.viento}};
+      const LUZ={blending:T.CustomBlending,blendEquation:T.AddEquation,blendSrc:T.OneFactor,blendDst:T.OneFactor,blendSrcAlpha:T.ZeroFactor,blendDstAlpha:T.OneFactor};
+      this.pts=new T.Points(g,new T.ShaderMaterial(Object.assign({uniforms:this.u,transparent:true,depthWrite:false,
+        vertexShader:`attribute float aB,aH,aR; uniform float uTime,uG,uScan,uFade,uViewH,uViento; varying float vA;
+          void main(){
+            vec3 p=position;
+            float vis=smoothstep(aH-0.02,aH+0.06,uG*1.1);                                    // crece desde la base
+            p.z*=mix(0.0,1.0,smoothstep(0.0,1.0,vis));
+            float w=aH*aH*0.008*uViento;                                                       // viento: se mece más arriba
+            p.x+=sin(uTime*1.3+position.y*9.0+aR)*w; p.y+=cos(uTime*1.1+position.x*7.0)*w*0.6;
+            float sc0=exp(-pow((p.x-uScan)/0.012,2.0));                                        // línea de escaneo
+            vA=(aB*0.42*(0.75+0.25*sin(uTime*2.0+aR*30.0))+sc0*0.5)*vis*uFade;   // los puntos se suman entre sí: cada uno aporta poco
+            vec4 mv=modelViewMatrix*vec4(p,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
+            gl_PointSize=clamp(0.0048*(1.0+sc0*0.8)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,6.0);
+            gl_Position=projectionMatrix*mv; }`,
+        fragmentShader:`precision mediump float; varying float vA; void main(){ vec2 q=gl_PointCoord-0.5; if(dot(q,q)>0.25) discard; gl_FragColor=vec4(vec3(vA),0.0); }`},LUZ)));
+      this.pts.frustumCulled=false; this.pts.visible=false; this.el.object3D.add(this.pts);
+      this.t=0; this.running=false; this.ultScan=-1;
+      this.anchor.addEventListener('targetFound',()=>this.start());
+      this.anchor.addEventListener('targetLost',()=>{ clearTimeout(this._lostT); this._lostT=setTimeout(()=>this.reset(),2000); });
+    },
+    start(){ clearTimeout(this._lostT); if(this.running) return; this.running=true; this.t=0; this.pts.visible=true; },
+    reset(){ this.running=false; this.pts.visible=false; },
+    tick(t,dt){
+      if(!this.running){ if(this.anchor.components&&this.anchor.components['mindar-image-target']&&this.anchor.object3D.visible) this.start(); if(!this.running) return; }
+      const d=this.data, st=Math.min(0.05,(dt||16)/1000); this.t+=st; const s=this.t;
+      this.u.uTime.value=s; this.u.uFade.value=Math.min(1,s/1.5);
+      const cal=isFinite(+window.hzCalor)?+window.hzCalor:0.5; this.u.uViento.value+=(d.viento*(0.3+2.2*cal*cal)-this.u.uViento.value)*0.05;   // acercarse levanta el viento
+      const k=Math.min(1,s/d.crece); this.u.uG.value=1-Math.pow(1-k,2);
+      const ciclo=Math.floor(s/d.escaneo), f=(s%d.escaneo)/d.escaneo;
+      this.u.uScan.value=s<1?-2:(-0.55+f*1.1);
+      if(ciclo!==this.ultScan){ this.ultScan=ciclo; window.HZS&&HZS.ev('bosque'); }
+      const r=this.el.sceneEl.renderer; if(r) this.u.uViewH.value=r.getContext().drawingBufferHeight;
+    }
+  });
+  </script>
+
   <!-- ESPIRAL: esfera de vidrio con espirales adentro, del shader de Matthias Hurrle (@atzedent) para el
        Creative Coding Challenge "Spiral" (openprocessing.org/curation/78544). Va en un plano que mira a la cámara,
        flotando sobre la página; la intersección con la esfera se calcula directo en lugar de buscarla en 400 pasos. -->
@@ -3092,6 +3184,8 @@
 
     const EFECTOS={
       // 0 · la luz del foco → la materia se condensa en el modelo → rayos, polvo que sube y balanceo lento
+      // bosque · nube de puntos tipo escaneo LiDAR
+      bosque:(e,i)=>({anchor:'', inner:marco(e,i,0.5)+'<a-entity bosque="'+esc(attr('bosque',e))+'"></a-entity>'}),
       // espiral · esfera de vidrio con espirales adentro (shader de @atzedent)
       espiral:(e,i)=>({anchor:'', inner:marco(e,i,0.5)+'<a-entity espiral="'+esc(attr('espiral',e))+'"></a-entity>'}),
       // acrecion · shader "Accretion" de @XorDev sobre la página
@@ -3273,7 +3367,7 @@
         const N=c.sampleRate*2, b=c.createBuffer(1,N,c.sampleRate), d=b.getChannelData(0); for(let i=0;i<N;i++) d[i]=Math.random()*2-1; S.ruido=b;
         const loop=()=>{ let k=+window.hzCalor; if(!isFinite(k)) k=0.5; const t=c.currentTime;
           S.lp.frequency.setTargetAtTime(500+k*k*7000,t,0.2);
-          const activo=Object.keys(S.on).length>0; S.out.gain.setTargetAtTime(activo?S.vol*(0.45+0.55*k):0,t,0.3);
+          const activo=Object.keys(S.on).length>0; S.out.gain.setTargetAtTime(activo?S.vol*(S.on.bosque?1:(0.45+0.55*k)):0,t,0.3);
           requestAnimationFrame(loop); }; loop();
         document.querySelectorAll('.hz-ancla').forEach(an=>{ if(an.object3D.visible) S.start(an.dataset.efecto); });   // lo que ya está a la vista empieza a sonar
       };
@@ -3299,6 +3393,15 @@
         espiral:()=>{ const v=[220,261.63,329.63,392].map((f,i)=>osc(i%2?'triangle':'sine',f,0.035,S.del)), sh=v.map((x,i)=>{ const l=osc('sine',0.07+i*0.03,3+i,null); l.a.disconnect(); l.a.connect(x.o.detune); return l; });
           v.forEach(x=>x.a.connect(S.lp)); return ()=>{ v.concat(sh).forEach(x=>x.o.stop()); }; },
         sinapsis:()=>{ const z=osc('sine',110,0.03,null); return ()=>z.o.stop(); },
+        bosque:()=>{ // viento: casi silencio de lejos, ráfagas y hojas que se agitan al acercar el teléfono
+          const c=S.ctx, n=ruido(null,0.0,'bandpass',500,0.8), g=ruido(null,0.0,'lowpass',260,1.5), hojas=ruido(null,0.0,'highpass',4500,0.7);
+          const raf=osc('sine',0.13,0.5,null); raf.a.disconnect(); const rg=c.createGain(); rg.gain.value=0.5; raf.a.connect(rg.gain);   // ráfagas lentas
+          n.a.disconnect(); n.a.connect(rg); rg.connect(S.lp);
+          let vivo=true; const upd=()=>{ if(!vivo) return; let k=+window.hzCalor; if(!isFinite(k)) k=0.5; const t=c.currentTime, e=k*k;
+            n.a.gain.setTargetAtTime(0.04+0.55*e,t,0.25); n.f.frequency.setTargetAtTime(350+1500*e,t,0.3);
+            g.a.gain.setTargetAtTime(0.03+0.25*e,t,0.3); hojas.a.gain.setTargetAtTime(0.004+0.09*e*e*(0.6+0.4*Math.random()),t,0.08);
+            raf.o.frequency.setTargetAtTime(0.1+0.5*e,t,0.5); setTimeout(upd,90); }; upd();
+          return ()=>{ vivo=false; [n,g,hojas].forEach(x=>x.s.stop()); raf.o.stop(); }; },
         'hoyo-negro':()=>{ const a=osc('sine',41,0.22,null), b=osc('sine',41.6,0.18,null), n=ruido(null,0.18,'lowpass',90,2), lfo=osc('sine',0.03,70,null); lfo.a.disconnect(); lfo.a.connect(n.f.frequency);
           return ()=>{ [a,b,lfo].forEach(x=>x.o.stop()); n.s.stop(); }; }
       };
@@ -3308,6 +3411,7 @@
       S.ev=(ef,x)=>{ if(!S.ctx||!S.on[ef]) return;
         if(ef==='micelio') golpe(62,0.9,0.5,'sine',38);                                                 // pulso de nutriente: latido grave
         else if(ef==='sinapsis'){ chasquido(5200,0.02,0.4); golpe(220*Math.pow(2,PENTA[(x||0)%PENTA.length]/12),0.35,0.18,'sine',null,true); }   // disparo
+        else if(ef==='bosque'){ golpe(1760,0.6,0.08,'sine',1700,true); golpe(2640,0.4,0.04,'sine',null,true); }   // pasada del escaneo
         else if(ef==='mercurio') golpe(900+Math.random()*700,0.45,0.25,'sine',380,true);                  // dos gotas se funden
         else if(ef==='espejo'){ const f=440*Math.pow(2,PENTA[Math.floor(Math.random()*8)]/12); golpe(f,1.6,0.2,'sine',null,true); golpe(f*1.5,1.2,0.08,'sine',null,true); }  // nodo nuevo
       };

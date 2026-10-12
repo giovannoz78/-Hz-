@@ -46,10 +46,12 @@ window.HZ = {
     //     (el efecto anterior sigue disponible: { efecto: 'fuego' })
     { efecto: 'espejo', marco: false },
 
-    // 2 · MERCURIO — gotas de metal líquido que se atraen y se funden; al quedar una sola, estalla y vuelve a empezar
-    //     ajustes: opciones: { 'mercurio': { gotas: 14, tamano: 0.045, atrae: 0.012, queda: 5 } }
-    //     (el efecto anterior, red, sigue disponible: { efecto: 'red', modelo: './assets/2.glb', malla: 'red' })
-    { efecto: 'mercurio', marco: false },
+    // 2 · BOSQUE — bosque en nube de puntos, como un escaneo LiDAR: crece desde la página, se mece con el viento
+    //     y lo recorre una línea de escaneo; al acercar el teléfono sube el viento (sonido y movimiento de los árboles)
+    //     ajustes: opciones: { 'bosque': { arboles: 16, alto: 0.42, puntos: 26000, crece: 8, escaneo: 5, viento: 1 } }
+    //     (puntos baja el costo en teléfonos lentos: 15000 se ve casi igual)
+    //     (el efecto anterior sigue disponible: { efecto: 'mercurio' })
+    { efecto: 'bosque', marco: false },
 
     // 3 · ACRECIÓN — el shader "Accretion" de @XorDev (shadertoy.com/view/WcKXDV) sobre la página, en grises
     //     ajustes: opciones: { 'acrecion': { tamano: 1, escala: 1, velocidad: 1, pasos: 20, brillo: 1 } }
