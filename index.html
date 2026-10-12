@@ -3143,6 +3143,14 @@
   });
   </script>
 
+  <!-- Aviso en pantalla: aparece cada vez que se reconoce una tarjeta y queda visible mientras se mira -->
+  <style>
+    #hz-aviso{ position:fixed; left:0; right:0; bottom:96px; z-index:99999; text-align:center; pointer-events:none;
+      font:500 15px/1.4 -apple-system,'Helvetica Neue',sans-serif; color:#fff; letter-spacing:.04em; text-shadow:0 1px 6px rgba(0,0,0,.9);
+      opacity:0; transition:opacity .6s; padding:0 24px; }
+    #hz-aviso.on{ opacity:.92; }
+  </style>
+  <div id="hz-aviso"></div>
   <!-- Botón mini 🔊 -->
   <button id="audio-btn" title="Habilitar audio">🔊</button>
 
@@ -3444,6 +3452,12 @@
 
   <!-- Eventos -->
   <script>
+    // aviso: texto en pantalla mientras hay una tarjeta a la vista (se configura con 'aviso' en hz.config.js; '' lo apaga)
+    (function(){ const el=document.getElementById('hz-aviso'), H=window.HZ||{}; const txt=H.aviso==null?'Movete alrededor de la imagen':H.aviso; if(!txt) return;
+      el.textContent=txt; let vis=0;
+      document.querySelectorAll('.hz-ancla').forEach(an=>{
+        an.addEventListener('targetFound',()=>{ vis++; el.classList.add('on'); });
+        an.addEventListener('targetLost',()=>{ vis=Math.max(0,vis-1); if(!vis) el.classList.remove('on'); }); }); })();
     // sonido de cada escena: arranca con la tarjeta y se apaga al perderla
     document.querySelectorAll('.hz-ancla').forEach(an=>{ const ef=an.dataset.efecto;
       an.addEventListener('targetFound',()=>window.HZS&&HZS.start(ef));
