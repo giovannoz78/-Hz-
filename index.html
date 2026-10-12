@@ -3253,7 +3253,11 @@
       let card='';
       if(preview && HZ_DATOS.miniaturas[t]){ const asp=(HZ_DATOS.aspectos&&HZ_DATOS.aspectos[t])||1; card='<a-plane class="hz-carta" src="'+HZ_DATOS.miniaturas[t]+'" width="1" height="'+asp+'" position="0 0 -0.001" material="shader: flat; transparent: false"></a-plane>'; }
       else if(preview) card='<a-plane class="hz-carta" width="1" height="1" position="0 0 -0.001" material="shader: flat; color: #1a1a1a"></a-plane>';
-      body+='<a-entity id="hz-ancla-'+i+'" class="hz-ancla" data-efecto="'+e.efecto+'" '+ancla+' '+o.anchor+'>'+card+o.inner+'</a-entity>';
+      // de pie: la escena se para sobre el borde inferior de la tarjeta y sale hacia quien mira,
+      // así mirando la tarjeta de frente ya se la ve de costado, en volumen (vista: 'plana' la deja acostada sobre la página)
+      const V=Object.assign({vista:'pie',inclina:72},H.vista||{},e.vista||{}), pie=V.vista!=='plana';
+      const inner=pie?'<a-entity class="hz-vista" position="0 -0.22 0.22" rotation="'+(-V.inclina)+' 0 0">'+o.inner+'</a-entity>':o.inner;
+      body+='<a-entity id="hz-ancla-'+i+'" class="hz-ancla" data-efecto="'+e.efecto+'" '+ancla+' '+o.anchor+'>'+card+inner+'</a-entity>';
     });
 
     const fondo=HZC((H.colores&&H.colores.fondo)||'#0B0906'), puntos=HZC((H.colores&&H.colores.puntos)||'#D9A441');
@@ -3262,7 +3266,7 @@
       ' color-space="sRGB" renderer="colorManagement: true; antialias: true" vr-mode-ui="enabled: false"'+
       ' loading-screen="dotsColor: '+puntos+'; backgroundColor: '+fondo+'" device-orientation-permission-ui="enabled: false">'+
       '<a-assets>'+assets+'</a-assets>'+
-      (preview?'<a-entity id="hz-cam" camera position="0 0 1.35" look-controls="enabled:false" wasd-controls="enabled:false"></a-entity><a-entity id="hz-giro" rotation="-15 0 0">'+body+'</a-entity>'
+      (preview?'<a-entity id="hz-cam" camera position="0 0 1.35" look-controls="enabled:false" wasd-controls="enabled:false"></a-entity><a-entity id="hz-giro" rotation="0 0 0">'+body+'</a-entity>'
               :'<a-camera position="0 0 0" look-controls="enabled:false"></a-camera>'+body)+
       '<a-entity id="pulse-holder"></a-entity></a-scene>';
     document.body.insertAdjacentHTML('afterbegin',scene);
@@ -3429,7 +3433,7 @@
       // la vista previa: el trigger "aparece" apenas carga la escena
       const sc=document.querySelector('a-scene'), giroEl=document.getElementById('hz-giro'), cam=document.getElementById('hz-cam');
       sc.addEventListener('loaded',()=>setTimeout(()=>document.querySelectorAll('.hz-ancla').forEach(a=>a.emit('targetFound')),300));
-      let drag=null, rx=-15, ry=0, z=1.35;
+      let drag=null, rx=0, ry=0, z=1.35;
       window.addEventListener('pointerdown',e=>{ drag={x:e.clientX,y:e.clientY,rx,ry}; });
       window.addEventListener('pointerup',()=>drag=null);
       window.addEventListener('pointermove',e=>{ if(!drag) return; ry=drag.ry+(e.clientX-drag.x)*0.4; rx=Math.max(-89,Math.min(89,drag.rx+(e.clientY-drag.y)*0.4)); giroEl.setAttribute('rotation',rx+' '+ry+' 0'); });

@@ -14,7 +14,7 @@ window.HZ = {
   subtitulo: '',
   frase:     '',
   guia:      'Apuntá la cámara a la imagen',
-  guia2:     'Mirala de costado y rodeala con el teléfono:\ncada imagen tiene volumen.',
+  guia2:     'Movete alrededor de la imagen:\ncada escena tiene volumen.',
 
   // archivo de triggers que genera preparar.html
   mind: './mindar/targets.mind',
@@ -32,6 +32,10 @@ window.HZ = {
   // sonido: cada escena tiene su capa sintetizada en el teléfono; arranca con el primer toque en pantalla (o el botón 🔊).
   // false lo apaga. volumen: 0 a 1.
   sonido:  { volumen: 0.8 },
+  // vista: 'pie' para la escena sobre el borde inferior de la tarjeta y la saca hacia quien mira,
+  // así apuntando de frente ya se ve de costado, en volumen. inclina: 90 = totalmente de pie, 60 = un poco recostada.
+  // 'plana' la deja acostada sobre la página (hay que inclinar el teléfono para verla de costado).
+  vista:   { vista: 'pie', inclina: 72 },
   colores: { tinta: '#FFFFFF', fondo: '#000000', puntos: '#FFFFFF' },   // textos y puntitos de la pantalla de carga
 
   escenas: [
