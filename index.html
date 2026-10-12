@@ -2240,74 +2240,100 @@
   </script>
 </head>
 
-  <!-- NUBE: todas las escenas de [Hz] son nubes de puntos con su propio color (assets/*.bin, generadas con nubes.py;
-       la del coral es un escaneo real). Cada nube llega como polvo y se arma de pie sobre la tarjeta; al acercar
-       el teléfono se desarma en polvo que gira y al alejarlo se vuelve a condensar. Cada escena suma su movimiento:
-       pulsos que recorren la forma (ola), viento que mece lo alto (viento) o giro alrededor de su centro (giro). -->
+  <!-- NUBE: las escenas de [Hz] son nubes de puntos con su propio color (assets/*.bin).
+       Entropía: la forma solo se sostiene con el movimiento de quien mira. Al dar la vuelta alrededor de la tarjeta
+       la materia se ordena y la forma aparece entera; si el teléfono se queda quieto, se va deshaciendo por zonas
+       en un humo que sigue un campo de flujo, con un frente incandescente donde el orden se rehace.
+       La cercanía agita el flujo. -->
   <script>
   AFRAME.registerComponent('nube',{
-    schema:{ src:{default:'./assets/coral.bin'}, tamano:{default:1.0}, punto:{default:0.0042}, arma:{default:4.5}, dispersa:{default:1.0}, brillo:{default:1.15},
-      ola:{default:0}, olaVel:{default:0.35}, olaLargo:{default:1.0}, viento:{default:0}, giro:{default:0}, giroK:{default:0}, giroS:{default:0}, respira:{default:1} },
+    schema:{ src:{default:'./assets/coral.bin'}, tamano:{default:1.0}, punto:{default:0.0042}, arma:{default:5.0}, brillo:{default:1.15},
+      ola:{default:0}, olaVel:{default:0.35}, olaLargo:{default:1.0}, viento:{default:0}, giro:{default:0}, giroK:{default:0}, giroS:{default:0},
+      base:{default:0.38}, memoria:{default:8}, flujo:{default:1.0} },
     init(){
       const T=AFRAME.THREE,d=this.data;
       this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
-      this.u={uTime:{value:0},uDis:{value:1},uViewH:{value:800},uPunto:{value:d.punto},uBrillo:{value:d.brillo},
-        uOla:{value:d.ola},uOlaVel:{value:d.olaVel},uOlaLargo:{value:d.olaLargo},uViento:{value:d.viento},uGiro:{value:d.giro},uGiroK:{value:d.giroK},uGiroS:{value:d.giroS},uRespira:{value:d.respira}};
-      this.t=0; this.running=false; this.dis=1; this.pts=null; this.cargando=false;
+      this.u={uTime:{value:0},uOrden:{value:0},uCerca:{value:0.5},uViewH:{value:800},uPunto:{value:d.punto},uBrillo:{value:d.brillo},uFlujo:{value:d.flujo},
+        uOla:{value:d.ola},uOlaVel:{value:d.olaVel},uOlaLargo:{value:d.olaLargo},uViento:{value:d.viento},uGiro:{value:d.giro},uGiroK:{value:d.giroK},uGiroS:{value:d.giroS}};
+      this.t=0; this.running=false; this.pts=null; this.cargando=false; this.energia=0; this.orden=0;
+      this._c=new T.Vector3(); this._d=new T.Vector3(); this._prev=null;
       this.anchor.addEventListener('targetFound',()=>this.start());
       this.anchor.addEventListener('targetLost',()=>{ clearTimeout(this._lostT); this._lostT=setTimeout(()=>this.reset(),2000); });
     },
     cargar(){
-      // se descarga recién cuando aparece su tarjeta: el teléfono no baja las siete nubes de entrada
+      // se descarga recién cuando aparece su tarjeta
       if(this.cargando) return; this.cargando=true;
       const T=AFRAME.THREE,d=this.data;
       fetch(d.src).then(r=>{ if(!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then(buf=>{
         const dv=new DataView(buf), n=dv.getUint32(0,true), E=dv.getFloat32(4,true);
         const qi=new Int16Array(buf,8,n*3), col=new Uint8Array(buf,8+n*6,n*4);
-        const P=new Float32Array(n*3), R=new Float32Array(n*4);
+        const P=new Float32Array(n*3), R=new Float32Array(n);
         for(let i=0;i<n*3;i++) P[i]=qi[i]/32767*E*d.tamano;
-        for(let i=0;i<n;i++){ let x=Math.random()*2-1,y=Math.random()*2-1,z=Math.random()*2-1; const l=Math.hypot(x,y,z)||1;
-          R[i*4]=x/l; R[i*4+1]=y/l; R[i*4+2]=Math.abs(z/l)*0.8+0.2; R[i*4+3]=Math.random(); }
+        for(let i=0;i<n;i++) R[i]=Math.random();
         const g=new T.BufferGeometry();
-        g.setAttribute('position',new T.BufferAttribute(P,3)); g.setAttribute('aCol',new T.BufferAttribute(col,4,true)); g.setAttribute('aR',new T.BufferAttribute(R,4));
+        g.setAttribute('position',new T.BufferAttribute(P,3)); g.setAttribute('aCol',new T.BufferAttribute(col,4,true)); g.setAttribute('aR',new T.BufferAttribute(R,1));
         this.pts=new T.Points(g,new T.ShaderMaterial({uniforms:this.u,transparent:false,depthWrite:true,depthTest:true,
-          vertexShader:`attribute vec4 aCol; attribute vec4 aR; uniform float uTime,uDis,uViewH,uPunto,uBrillo,uOla,uOlaVel,uOlaLargo,uViento,uGiro,uGiroK,uGiroS,uRespira; varying vec3 vC;
+          vertexShader:`attribute vec4 aCol; attribute float aR;
+            uniform float uTime,uOrden,uCerca,uViewH,uPunto,uBrillo,uFlujo,uOla,uOlaVel,uOlaLargo,uViento,uGiro,uGiroK,uGiroS; varying vec3 vC;
+            // ruido simplex 3D (Ashima Arts, MIT)
+            vec3 m289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;} vec4 m289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
+            vec4 perm(vec4 x){return m289(((x*34.0)+1.0)*x);} vec4 tis(vec4 r){return 1.79284291400159-0.85373472095314*r;}
+            float sn(vec3 v){ const vec2 C=vec2(1.0/6.0,1.0/3.0); const vec4 D=vec4(0.0,0.5,1.0,2.0);
+              vec3 i=floor(v+dot(v,C.yyy)); vec3 x0=v-i+dot(i,C.xxx); vec3 g=step(x0.yzx,x0.xyz); vec3 l=1.0-g;
+              vec3 i1=min(g.xyz,l.zxy); vec3 i2=max(g.xyz,l.zxy); vec3 x1=x0-i1+C.xxx; vec3 x2=x0-i2+C.yyy; vec3 x3=x0-D.yyy; i=m289(i);
+              vec4 p=perm(perm(perm(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0));
+              float n_=0.142857142857; vec3 ns=n_*D.wyz-D.xzx; vec4 j=p-49.0*floor(p*ns.z*ns.z); vec4 x_=floor(j*ns.z); vec4 y_=floor(j-7.0*x_);
+              vec4 x=x_*ns.x+ns.yyyy; vec4 y=y_*ns.x+ns.yyyy; vec4 h=1.0-abs(x)-abs(y); vec4 b0=vec4(x.xy,y.xy); vec4 b1=vec4(x.zw,y.zw);
+              vec4 s0=floor(b0)*2.0+1.0; vec4 s1=floor(b1)*2.0+1.0; vec4 sh=-step(h,vec4(0.0)); vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy; vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+              vec3 p0=vec3(a0.xy,h.x); vec3 p1=vec3(a0.zw,h.y); vec3 p2=vec3(a1.xy,h.z); vec3 p3=vec3(a1.zw,h.w);
+              vec4 nr=tis(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3))); p0*=nr.x; p1*=nr.y; p2*=nr.z; p3*=nr.w;
+              vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0); m=m*m;
+              return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3))); }
+            vec3 campo(vec3 p){ return vec3(sn(p),sn(p+vec3(31.4,7.1,0.0)),sn(p+vec3(0.0,67.1,13.7))); }
             void main(){
-              vec3 p=position; float s=aCol.a, r=aR.w;
-              // giro alrededor del eje vertical de la escena (giroK 1.5 = como un disco de acreción: lo de adentro gira más rápido)
+              vec3 p=position; float s=aCol.a, r=aR;
               if(uGiro!=0.0){ float w=mix(1.0,1.0-s,uGiroS); float rr=max(length(p.xy),0.03);
                 float a0=uTime*uGiro*w*pow(rr/0.2,-uGiroK); float c0=cos(a0),s0=sin(a0); p.xy=mat2(c0,-s0,s0,c0)*p.xy; }
-              // viento: mece más lo que está más alto
               if(uViento>0.0){ float h=p.z*p.z*uViento; p.x+=sin(uTime*1.3+position.y*9.0+r)*h*0.06; p.y+=cos(uTime*1.1+position.x*7.0)*h*0.035; }
-              // ola: un pulso de luz que recorre la forma siguiendo su fase
               float f=fract(s*uOlaLargo-uTime*uOlaVel), ola=uOla*exp(-f*14.0)*step(0.001,s);
-              float dd=clamp(uDis*(0.55+0.9*r)-0.25*r,0.0,1.0); dd=dd*dd*(3.0-2.0*dd);
-              vec3 q=p+aR.xyz*dd*(0.12+0.5*r)+vec3(0.0,0.0,dd*0.18*sin(uTime*0.7+r*6.283));
-              float a=dd*(1.2+2.5*r)+uTime*0.25*dd, c=cos(a), sn=sin(a); q.xy=mat2(c,-sn,sn,c)*q.xy;
-              q+=vec3(sin(uTime*0.9+r*40.0),cos(uTime*0.8+r*31.0),sin(uTime*0.6+r*23.0))*0.003*(uRespira+dd*8.0);
-              vC=pow(aCol.rgb,vec3(0.85))*uBrillo*(1.0+dd*0.35)+ola*vec3(1.0,0.95,0.85);
+              // orden local: la forma se deshace por zonas, no toda a la vez
+              float zona=sn(p*3.2+vec3(0.0,0.0,uTime*0.06))*0.5+sn(p*9.0-uTime*0.04)*0.18;
+              float o=uOrden+zona*0.55-r*0.12;
+              float dd=smoothstep(0.42,0.02,o);                                   // 0 = en su lugar, 1 = humo
+              float frente=exp(-pow((o-0.3)/0.07,2.0))*(1.0-dd*0.5);             // borde incandescente donde el orden se rehace
+              // humo: el punto se deja llevar por un campo de flujo plegado sobre sí mismo
+              float ag=uFlujo*(0.8+uCerca*1.4);
+              vec3 w1=campo(p*2.4+vec3(0.0,0.0,-uTime*0.09*ag));
+              vec3 w2=campo(p*5.0+w1*0.6+vec3(uTime*0.05*ag,0.0,0.0));
+              vec3 q=p+(w1*0.10+w2*0.05)*dd*(0.6+r)+vec3(0.0,0.0,dd*dd*(0.05+0.18*r));
+              q+=w2*0.0025;                                                        // respiración leve aun en orden
+              vec3 base=pow(aCol.rgb,vec3(0.85))*uBrillo; vC=base*(1.0-dd*0.45)+frente*(base*0.9+0.12)+ola*vec3(1.0,0.95,0.85);
               vec4 mv=modelViewMatrix*vec4(q,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
-              gl_PointSize=clamp(uPunto*(1.0-dd*0.45+ola*0.8)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,10.0);
+              gl_PointSize=clamp(uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,10.0);
               gl_Position=projectionMatrix*mv; }`,
           fragmentShader:`precision mediump float; varying vec3 vC; void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25) discard; gl_FragColor=vec4(vC*(1.0-e*1.2),1.0); }`}));
         this.pts.frustumCulled=false; this.pts.visible=this.running;
-        // en modo glow se dibuja después del paso de color, con su color real
         const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.pts.layers.set(2); window.hzCapa2=true; }
-        this.el.object3D.add(this.pts); this.t=0; this.dis=1;
+        this.el.object3D.add(this.pts); this.t=0;
       }).catch(e=>{ this.cargando=false; console.warn('[Hz] no se pudo leer la nube',d.src,e); });
     },
-    start(){ clearTimeout(this._lostT); this.cargar(); if(this.running) return; this.running=true; this.t=0; this.dis=1; if(this.pts) this.pts.visible=true; },
+    start(){ clearTimeout(this._lostT); this.cargar(); if(this.running) return; this.running=true; this.t=0; this.orden=0; this.energia=0.9; this._prev=null; if(this.pts) this.pts.visible=true; },
     reset(){ this.running=false; if(this.pts) this.pts.visible=false; },
     tick(t,dt){
       if(!this.running){ if(this.anchor.components&&this.anchor.components['mindar-image-target']&&this.anchor.object3D.visible) this.start(); if(!this.running) return; }
       if(!this.pts) return; if(!this.pts.visible) this.pts.visible=true;
       const d=this.data, st=Math.min(0.05,(dt||16)/1000); this.t+=st;
-      // se arma al aparecer; la cercanía lo desarma
-      let k=+window.hzCalor; if(!isFinite(k)) k=0.5;
-      const intro=1-Math.min(1,this.t/d.arma), cerca=Math.min(1,Math.max(0,(k-0.78)/0.2))*d.dispersa;
-      const meta=Math.max(intro*intro*(3-2*intro),cerca);
-      this.dis+=(meta-this.dis)*Math.min(1,st*(meta>this.dis?3.0:1.4));
-      this.u.uDis.value=this.dis; this.u.uTime.value=this.t; window.hzCoralDis=this.dis; window.hzNubeDis=this.dis;
+      // movimiento de quien mira: cuánto gira la dirección de la cámara vista desde la escena
+      const cam=this.el.sceneEl.camera;
+      if(cam){ cam.getWorldPosition(this._c); this.el.object3D.worldToLocal(this._c); this._d.copy(this._c).normalize();
+        if(this._prev){ const ang=Math.acos(Math.min(1,Math.max(-1,this._prev.dot(this._d)))); this.energia+=Math.max(0,ang-0.002)*1.8; }
+        this._prev=(this._prev||this._d.clone()).copy(this._d); }
+      this.energia=Math.min(1.2,this.energia*Math.exp(-st/d.memoria));
+      const meta=d.base+(1-d.base)*Math.min(1,this.energia);
+      const intro=Math.min(1,this.t/d.arma); this.orden+=(meta*intro-this.orden)*Math.min(1,st*1.5);
+      let k=+window.hzCalor; if(!isFinite(k)) k=0.5; this.u.uCerca.value+=(k-this.u.uCerca.value)*Math.min(1,st*2);
+      this.u.uOrden.value=this.orden; this.u.uTime.value=this.t;
+      window.hzNubeDis=window.hzCoralDis=1-this.orden;
       const r=this.el.sceneEl.renderer; if(r) this.u.uViewH.value=r.getContext().drawingBufferHeight;
     }
   });
@@ -3327,14 +3353,14 @@
     // NUBES DE PUNTOS: las siete escenas son nubes con su color, cada una con su movimiento.
     // Los efectos anteriores (líneas y shaders) siguen disponibles con el sufijo -lineas, por ejemplo { efecto: 'micelio-lineas' }.
     const NUBES={
-      micelio:     {src:'./assets/micelio.bin',    punto:0.0026, ola:0.9, olaVel:0.18, olaLargo:1.4},
-      mosca:       {src:'./assets/mosca.bin',      punto:0.0034, ola:0.25, olaVel:0.12, olaLargo:1.0, brillo:1.2},
+      micelio:     {src:'./assets/micelio.bin',    tamano:1.3, punto:0.0028, ola:0.9, olaVel:0.18, olaLargo:1.4},
+      mosca:       {src:'./assets/mosca.bin',      tamano:1.1, punto:0.0036, ola:0.25, olaVel:0.12, olaLargo:1.0, brillo:1.2},
       espejo:      {src:'./assets/espejo.bin',     punto:0.0028, giro:0.35, giroK:1.0, ola:0.7, olaVel:0.25, olaLargo:1.5},
       bosque:      {src:'./assets/bosque.bin',     punto:0.0026, viento:0.8, ola:0.6, olaVel:0.15, olaLargo:1.0},
-      coral:       {src:'./assets/coral.bin',      punto:0.0042, tamano:0.8},
-      espiral:     {src:'./assets/espiral.bin',    punto:0.0028, giro:0.3, ola:0.6, olaVel:0.22, olaLargo:2.0},
-      sinapsis:    {src:'./assets/sinapsis.bin',   punto:0.0028, ola:1.4, olaVel:0.45, olaLargo:1.0},
-      'hoyo-negro':{src:'./assets/hoyo-negro.bin', punto:0.0032, giro:0.9, giroK:1.5, giroS:1, brillo:1.25}
+      coral:       {src:'./assets/coral.bin',      punto:0.0045, tamano:1.15},
+      espiral:     {src:'./assets/espiral.bin',    tamano:1.45, punto:0.003, giro:0.3, ola:0.6, olaVel:0.22, olaLargo:2.0},
+      sinapsis:    {src:'./assets/sinapsis.bin',   tamano:1.3, punto:0.003, ola:1.4, olaVel:0.45, olaLargo:1.0},
+      'hoyo-negro':{src:'./assets/hoyo-negro.bin', base:0.62, punto:0.0032, giro:0.9, giroK:1.5, giroS:1, brillo:1.25}
     };
     Object.keys(NUBES).forEach(n=>{ if(EFECTOS[n]) EFECTOS[n+'-lineas']=EFECTOS[n];
       EFECTOS[n]=(e,i)=>({anchor:'', inner:marco(e,i,0.5)+'<a-entity nube="'+esc(attr('nube',Object.assign({},e,{opciones:Object.assign({},e.opciones,{nube:Object.assign({},(e.opciones||{})[n]||{},(e.opciones||{}).nube||{})})}),NUBES[n]))+'"></a-entity>'}); });
