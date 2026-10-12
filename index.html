@@ -3450,7 +3450,10 @@
         else if(ef==='espejo'){ const f=440*Math.pow(2,PENTA[Math.floor(Math.random()*8)]/12); golpe(f,1.6,0.2,'sine',null,true); golpe(f*1.5,1.2,0.08,'sine',null,true); }  // nodo nuevo
       };
       // el audio solo puede arrancar con un toque: cualquier toque lo arma
-      window.addEventListener('pointerdown',()=>S.armar(),{passive:true});
+      ['pointerdown','touchend','click'].forEach(ev=>window.addEventListener(ev,()=>{ S.armar();
+        // iOS: el audio solo se libera dentro del toque; se reanuda y suena un buffer mudo para desbloquearlo
+        try{ if(S.ctx){ if(S.ctx.state!=='running') S.ctx.resume(); const bf=S.ctx.createBuffer(1,1,22050), sr=S.ctx.createBufferSource(); sr.buffer=bf; sr.connect(S.ctx.destination); sr.start(0); }
+          document.querySelectorAll('.hz-ancla').forEach(an=>{ if(an.object3D&&an.object3D.visible) S.start(an.dataset.efecto); }); }catch(e){} },{passive:true}));
       document.addEventListener('visibilitychange',()=>{ if(document.hidden&&S.ctx) S.ctx.suspend(); else if(S.ctx) S.ctx.resume(); });
     })();
 
