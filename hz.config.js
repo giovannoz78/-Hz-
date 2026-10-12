@@ -64,8 +64,11 @@ window.HZ = {
     // 3 · CORAL — escaneo real de un coral (160 mil puntos con su color)
     { efecto: 'coral', marco: false },
 
-    // 4 · ESPIRAL — esfera hecha de espirales que van de polo a polo, con un núcleo que gira al revés
-    { efecto: 'espiral', marco: false },
+
+    // 4 · TERRENO — relieve en malla de alambre cian: montañas que respiran y se desplazan lento; al acercar el teléfono se levantan
+    //     ajustes: opciones: { 'terreno': { ancho: 1.3, alto: 0.2, lineas: 72, velocidad: 1, brillo: 1 } }
+    //     (la esfera de espirales sigue disponible: { efecto: 'espiral' })
+    { efecto: 'terreno', marco: false },
 
     // 5 · SINAPSIS — núcleos incandescentes unidos por arcos de polvo; los impulsos viajan de uno a otro
     { efecto: 'sinapsis', marco: false },

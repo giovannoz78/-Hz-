@@ -2240,6 +2240,59 @@
   </script>
 </head>
 
+  <!-- TERRENO: relieve en malla de alambre, cian sobre la oscuridad. El relieve respira y se desplaza lento;
+       al acercar el teléfono las montañas se levantan. Se dibuja con su propio color, por fuera del mapa térmico. -->
+  <script>
+  AFRAME.registerComponent('terreno',{
+    schema:{ ancho:{default:1.3}, lineas:{default:72}, pasos:{default:160}, alto:{default:0.2}, velocidad:{default:1}, brillo:{default:1} },
+    init(){
+      const T=AFRAME.THREE,d=this.data;
+      this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
+      const P=[], N=d.lineas, M=d.pasos, A=d.ancho/2;
+      // líneas en las dos direcciones: cada segmento une dos puntos vecinos de la grilla
+      for(let dir=0;dir<2;dir++) for(let i=0;i<=N;i++){ const u=-A+2*A*i/N;
+        for(let j=0;j<M;j++){ const v0=-A+2*A*j/M, v1=-A+2*A*(j+1)/M;
+          if(dir===0) P.push(u,v0,0, u,v1,0); else P.push(v0,u,0, v1,u,0); } }
+      const g=new T.BufferGeometry(); g.setAttribute('position',new T.Float32BufferAttribute(P,3));
+      this.u={uTime:{value:0},uAlto:{value:d.alto},uFade:{value:0},uCerca:{value:0.5},uA:{value:A},uBrillo:{value:d.brillo}};
+      this.mesh=new T.LineSegments(g,new T.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:false,depthTest:true,
+        blending:T.CustomBlending,blendEquation:T.AddEquation,blendSrc:T.OneFactor,blendDst:T.OneFactor,blendSrcAlpha:T.ZeroFactor,blendDstAlpha:T.OneFactor,
+        vertexShader:`uniform float uTime,uAlto,uFade,uCerca,uA; varying float vH; varying float vE;
+          vec2 h2(vec2 p){ p=vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3))); return -1.0+2.0*fract(sin(p)*43758.5453); }
+          float gn(vec2 p){ vec2 i=floor(p),f=fract(p); vec2 u=f*f*(3.0-2.0*f);
+            return mix(mix(dot(h2(i),f),dot(h2(i+vec2(1,0)),f-vec2(1,0)),u.x),mix(dot(h2(i+vec2(0,1)),f-vec2(0,1)),dot(h2(i+vec2(1,1)),f-vec2(1,1)),u.x),u.y); }
+          float fbm(vec2 p){ float s=0.0,a=0.5; for(int i=0;i<5;i++){ s+=a*gn(p); p=p*2.03+vec2(1.7,9.2); a*=0.5; } return s; }
+          void main(){
+            vec3 p=position; vec2 q=p.xy/uA;
+            vec2 w=p.xy*2.6+vec2(0.0,uTime*0.035);
+            float cresta=1.0-abs(fbm(w*0.8+3.1));                       // cordillera: crestas suaves
+            float h=fbm(w)*0.55+cresta*cresta*0.75;
+            float banda=smoothstep(-0.9,0.35,q.y)*smoothstep(1.05,0.4,q.y);   // las montañas atrás, el frente casi llano
+            h*=mix(0.25,1.0,banda);
+            float borde=smoothstep(1.0,0.72,max(abs(q.x),abs(q.y)));
+            p.z=max(0.0,h)*uAlto*(0.75+uCerca*0.7)*borde*uFade+0.002;
+            vH=clamp(p.z/(uAlto*0.9),0.0,1.0); vE=borde*uFade;
+            gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0); }`,
+        fragmentShader:`precision mediump float; uniform float uBrillo; varying float vH; varying float vE;
+          void main(){ vec3 bajo=vec3(0.05,0.32,0.38), alto=vec3(0.45,0.95,1.0);
+            vec3 c=mix(bajo,alto,pow(vH,0.8))*(0.55+0.6*vH)*vE*uBrillo; gl_FragColor=vec4(c,0.0); }`}));
+      this.mesh.frustumCulled=false; this.mesh.visible=false;
+      const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.mesh.layers.set(2); window.hzCapa2=true; }
+      this.el.object3D.add(this.mesh);
+      this.t=0; this.running=false;
+      this.anchor.addEventListener('targetFound',()=>this.start());
+      this.anchor.addEventListener('targetLost',()=>{ clearTimeout(this._lostT); this._lostT=setTimeout(()=>this.reset(),2000); });
+    },
+    start(){ clearTimeout(this._lostT); if(this.running) return; this.running=true; this.t=0; this.mesh.visible=true; },
+    reset(){ this.running=false; this.mesh.visible=false; },
+    tick(t,dt){
+      if(!this.running){ if(this.anchor.components&&this.anchor.components['mindar-image-target']&&this.anchor.object3D.visible) this.start(); if(!this.running) return; }
+      const st=Math.min(0.05,(dt||16)/1000); this.t+=st;
+      this.u.uTime.value=this.t*this.data.velocidad; this.u.uFade.value=Math.min(1,this.t/3);
+      let k=+window.hzCalor; if(!isFinite(k)) k=0.5; this.u.uCerca.value+=(k-this.u.uCerca.value)*Math.min(1,st*1.5);
+    }
+  });
+  </script>
   <!-- NUBE: las escenas de [Hz] son nubes de puntos con su propio color (assets/*.bin).
        Entropía: la forma solo se sostiene con el movimiento de quien mira. Al dar la vuelta alrededor de la tarjeta
        la materia se ordena y la forma aparece entera; si el teléfono se queda quieto, se va deshaciendo por zonas
@@ -2249,7 +2302,7 @@
   AFRAME.registerComponent('nube',{
     schema:{ src:{default:'./assets/coral.bin'}, tamano:{default:1.0}, punto:{default:0.0042}, arma:{default:5.0}, brillo:{default:1.15},
       ola:{default:0}, olaVel:{default:0.35}, olaLargo:{default:1.0}, viento:{default:0}, giro:{default:0}, giroK:{default:0}, giroS:{default:0},
-      base:{default:0.38}, memoria:{default:8}, flujo:{default:1.0} },
+      base:{default:0.28}, memoria:{default:5}, flujo:{default:1.0} },
     init(){
       const T=AFRAME.THREE,d=this.data;
       this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
@@ -2317,7 +2370,7 @@
         this.el.object3D.add(this.pts); this.t=0;
       }).catch(e=>{ this.cargando=false; console.warn('[Hz] no se pudo leer la nube',d.src,e); });
     },
-    start(){ clearTimeout(this._lostT); this.cargar(); if(this.running) return; this.running=true; this.t=0; this.orden=0; this.energia=0.9; this._prev=null; if(this.pts) this.pts.visible=true; },
+    start(){ clearTimeout(this._lostT); this.cargar(); if(this.running) return; this.running=true; this.t=0; this.orden=0; this.energia=0.9; this._prev=null; this._suave=null; if(this.pts) this.pts.visible=true; },
     reset(){ this.running=false; if(this.pts) this.pts.visible=false; },
     tick(t,dt){
       if(!this.running){ if(this.anchor.components&&this.anchor.components['mindar-image-target']&&this.anchor.object3D.visible) this.start(); if(!this.running) return; }
@@ -2325,9 +2378,11 @@
       const d=this.data, st=Math.min(0.05,(dt||16)/1000); this.t+=st;
       // movimiento de quien mira: cuánto gira la dirección de la cámara vista desde la escena
       const cam=this.el.sceneEl.camera;
+      // la dirección se suaviza antes de medir, así el temblor del seguimiento y de la mano no cuenta como movimiento
       if(cam){ cam.getWorldPosition(this._c); this.el.object3D.worldToLocal(this._c); this._d.copy(this._c).normalize();
-        if(this._prev){ const ang=Math.acos(Math.min(1,Math.max(-1,this._prev.dot(this._d)))); this.energia+=Math.max(0,ang-0.002)*1.8; }
-        this._prev=(this._prev||this._d.clone()).copy(this._d); }
+        if(!this._suave) this._suave=this._d.clone(); else this._suave.lerp(this._d,Math.min(1,st*4)).normalize();
+        if(this._prev){ const ang=Math.acos(Math.min(1,Math.max(-1,this._prev.dot(this._suave)))); this.energia+=Math.max(0,ang-st*0.12)*2.4; }
+        this._prev=(this._prev||this._suave.clone()).copy(this._suave); }
       this.energia=Math.min(1.2,this.energia*Math.exp(-st/d.memoria));
       const meta=d.base+(1-d.base)*Math.min(1,this.energia);
       const intro=Math.min(1,this.t/d.arma); this.orden+=(meta*intro-this.orden)*Math.min(1,st*1.5);
@@ -3362,6 +3417,8 @@
       sinapsis:    {src:'./assets/sinapsis.bin',   tamano:1.3, punto:0.003, ola:1.4, olaVel:0.45, olaLargo:1.0},
       'hoyo-negro':{src:'./assets/hoyo-negro.bin', base:0.62, punto:0.0032, giro:0.9, giroK:1.5, giroS:1, brillo:1.25}
     };
+    // terreno · relieve en malla de alambre cian
+    EFECTOS.terreno=(e,i)=>({anchor:'', inner:'<a-entity terreno="'+esc(attr('terreno',e))+'"></a-entity>'});
     Object.keys(NUBES).forEach(n=>{ if(EFECTOS[n]) EFECTOS[n+'-lineas']=EFECTOS[n];
       EFECTOS[n]=(e,i)=>({anchor:'', inner:marco(e,i,0.5)+'<a-entity nube="'+esc(attr('nube',Object.assign({},e,{opciones:Object.assign({},e.opciones,{nube:Object.assign({},(e.opciones||{})[n]||{},(e.opciones||{}).nube||{})})}),NUBES[n]))+'"></a-entity>'}); });
 
@@ -3551,6 +3608,12 @@
             g.a.gain.setTargetAtTime(0.03+0.25*e,t,0.3); hojas.a.gain.setTargetAtTime(0.004+0.09*e*e*(0.6+0.4*Math.random()),t,0.08);
             raf.o.frequency.setTargetAtTime(0.1+0.5*e,t,0.5); setTimeout(upd,90); }; upd();
           return ()=>{ vivo=false; [n,g,hojas].forEach(x=>x.s.stop()); raf.o.stop(); }; },
+        terreno:()=>{ // viento sobre el relieve: un grave lejano y aire filtrado que se abre al acercarse
+          const c=S.ctx, a=osc('sine',55,0.07,null), b=osc('sine',82.4,0.035,null), aire=ruido(null,0.05,'bandpass',420,0.7);
+          const lfo=osc('sine',0.05,180,null); lfo.a.disconnect(); lfo.a.connect(aire.f.frequency);
+          let vivo=true; const upd=()=>{ if(!vivo) return; let k=+window.hzCalor; if(!isFinite(k)) k=0.5; const t=c.currentTime;
+            aire.a.gain.setTargetAtTime(0.03+0.09*k,t,0.4); aire.f.frequency.setTargetAtTime(300+700*k,t,0.5); setTimeout(upd,120); }; upd();
+          return ()=>{ vivo=false; [a,b,lfo].forEach(x=>x.o.stop()); aire.s.stop(); }; },
         mosca:()=>{ // aleteo: un zumbido grave que late, apenas audible, que se afina al acercarse
           const c=S.ctx, z=osc('sawtooth',196,0.0,null), z2=osc('sawtooth',198.5,0.0,null), f=c.createBiquadFilter(); f.type='bandpass'; f.frequency.value=600; f.Q.value=1.2;
           z.a.disconnect(); z2.a.disconnect(); z.a.connect(f); z2.a.connect(f); f.connect(S.lp);
