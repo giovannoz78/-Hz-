@@ -61,11 +61,17 @@ window.HZ = {
     //     (el efecto anterior sigue disponible: { efecto: 'mercurio' })
     { efecto: 'bosque', marco: false, opciones: { 'bosque': { alto: 0.62 } } },
 
-    // 3 · ACRECIÓN — el shader "Accretion" de @XorDev (shadertoy.com/view/WcKXDV) sobre la página, en grises
+    // 3 · CORAL — escaneo real de un coral en nube de puntos (160 mil puntos con su color). Llega como polvo y se arma sobre la página;
+    //     al acercar el teléfono se desarma en polvo que gira y al alejarlo se vuelve a condensar. El sonido sigue ese ir y venir.
+    //     ajustes: opciones: { 'coral': { tamano: 0.8, punto: 0.0042, arma: 4.5, dispersa: 1, brillo: 1.15 } }  (dispersa: 0 = no se desarma)
+    //     el archivo es assets/coral.bin
+    { efecto: 'coral', marco: false },
+
+    // antes · ACRECIÓN — el shader "Accretion" de @XorDev (shadertoy.com/view/WcKXDV) sobre la página, en grises
     //     ajustes: opciones: { 'acrecion': { tamano: 1, escala: 1, velocidad: 1, pasos: 20, brillo: 1 } }
     //     (pasos baja el costo en teléfonos lentos: 14 o 16 se ve casi igual)
     //     (el efecto anterior sigue disponible: { efecto: 'estalagmitas' })
-    { efecto: 'acrecion', marco: false, opciones: { 'acrecion': { brillo: 0.6, mira: true, z: 0.32, tamano: 0.9 } } },
+    // { efecto: 'acrecion', marco: false, opciones: { 'acrecion': { brillo: 0.6, mira: true, z: 0.32, tamano: 0.9 } } },
 
     // 4 · ESPIRAL — esfera de vidrio con espirales adentro, del shader de Matthias Hurrle (@atzedent), flotando sobre la página
     //     ajustes: opciones: { 'espiral': { tamano: 0.62, z: 0.24, pasos: 60, velocidad: 1 } }
