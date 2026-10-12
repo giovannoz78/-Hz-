@@ -16,6 +16,9 @@ window.HZ = {
   guia:      'Apuntá la cámara a la imagen',
   guia2:     'Movete alrededor de la imagen:\ncada escena tiene volumen.',
 
+  // texto en pantalla mientras se ve una tarjeta ('' = sin texto)
+  aviso:     'Movete alrededor de la imagen',
+
   // archivo de triggers que genera preparar.html
   mind: './mindar/targets.mind',
 
@@ -27,7 +30,7 @@ window.HZ = {
   //   umbral: desde qué brillo de la cámara empieza el calor (0.5 = más zonas calientes, 0.75 = solo luces fuertes)
   //   cercania: cuánto calienta acercar el teléfono (0 = nada, 1 = normal, 2 = mucho)
   // modo 'bn' vuelve al blanco y negro puro.
-  paleta:  { modo: 'glow', mapa: 'termico', halo: 1.0, contraste: 1.0, camaraTermica: true, umbral: 0.62, cercania: 1.0, camara: true },
+  paleta:  { modo: 'glow', mapa: 'termico', halo: 1.0, contraste: 1.0, camaraTermica: false, umbral: 0.62, cercania: 1.0, camara: true },
 
   // sonido: cada escena tiene su capa sintetizada en el teléfono; arranca con el primer toque en pantalla (o el botón 🔊).
   // false lo apaga. volumen: 0 a 1.

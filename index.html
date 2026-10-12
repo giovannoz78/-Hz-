@@ -3328,7 +3328,7 @@
                 vec2 px=vec2(uCan.x+vUv.x*uCan.z, uCan.y+(1.0-vUv.y)*uCan.w);
                 vec2 vu=vec2((px.x-uVid.x)/uVid.z, 1.0-(px.y-uVid.y)/uVid.w);
                 vec3 cr=texture2D(tCam,clamp(vu,0.0,1.0)).rgb; float cl=dot(cr,vec3(0.299,0.587,0.114));
-                vec3 gris=vec3(cl*0.82);
+                vec3 gris=vec3(cl*0.5);
                 float th=smoothstep(uUmbral,uUmbral+0.07,cl);
                 vec3 cam=mix(gris,ramp((cl-uUmbral)/(1.0-uUmbral)*0.9+shift)*0.92,th);
                 gl_FragColor=vec4(cam*(1.0-al)+col,1.0);
@@ -3341,7 +3341,7 @@
           r.getDrawingBufferSize(sz);
           if(!rt||rt.width!==sz.x||rt.height!==sz.y){ if(rt) rt.dispose(); rt=new T.WebGLRenderTarget(sz.x,sz.y,{samples:r.capabilities.isWebGL2?4:0}); u.uPx.value.set(1/sz.x,1/sz.y); }
           // cámara: el video de MindAR como textura, alineado a pantalla con el mismo recorte que usa la página
-          if(P.camaraTermica!==false){
+          if(P.camaraTermica===true){
             const v=document.querySelector('video');
             if(v && v.readyState>=2 && v.videoWidth){
               if(v!==vidEl){ vidEl=v; if(vidTex) vidTex.dispose(); vidTex=new T.VideoTexture(v); vidTex.minFilter=T.LinearFilter; vidTex.magFilter=T.LinearFilter; }
