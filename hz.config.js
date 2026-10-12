@@ -14,7 +14,7 @@ window.HZ = {
   subtitulo: '',
   frase:     '',
   guia:      'Apuntá la cámara a la imagen',
-  guia2:     'Inclinalo y acercalo despacio:\nlas imágenes se activan con el movimiento del teléfono.',
+  guia2:     'Mirala de costado y rodeala con el teléfono:\ncada imagen tiene volumen.',
 
   // archivo de triggers que genera preparar.html
   mind: './mindar/targets.mind',
@@ -38,44 +38,46 @@ window.HZ = {
 
     // 0 · MICELIO — hifas que nacen de unas esporas, crecen ramificándose sobre la página y después las recorren pulsos de luz
     //     ajustes: opciones: { 'micelio': { esporas: 5, crece: 14, rama: 0.045, radio: 0.46 } }
-    { efecto: 'micelio', marco: false },
+    { efecto: 'micelio', marco: false, opciones: { 'micelio': { trepa: 0.6, alto: 0.5 } } },
 
     // 1 · ESPEJO — así arriba, como abajo: la página es el horizonte; una red de nodos flota encima y su reflejo vive debajo,
     //     unidos por hilos verticales, con un flujo de reloj de arena que cruza de un mundo al otro. Tocar la pantalla suma nodos.
     //     ajustes: opciones: { 'espejo': { nodos: 42, enlace: 0.15, alto: 0.36, arena: 160 } }
     //     (el efecto anterior sigue disponible: { efecto: 'fuego' })
-    { efecto: 'espejo', marco: false },
+    { efecto: 'espejo', marco: false, opciones: { 'espejo': { alto: 0.55 } } },
 
     // 2 · BOSQUE — bosque en nube de puntos, como un escaneo LiDAR: crece desde la página, se mece con el viento
     //     y lo recorre una línea de escaneo; al acercar el teléfono sube el viento (sonido y movimiento de los árboles)
     //     ajustes: opciones: { 'bosque': { arboles: 16, alto: 0.42, puntos: 26000, crece: 8, escaneo: 5, viento: 1 } }
     //     (puntos baja el costo en teléfonos lentos: 15000 se ve casi igual)
     //     (el efecto anterior sigue disponible: { efecto: 'mercurio' })
-    { efecto: 'bosque', marco: false },
+    { efecto: 'bosque', marco: false, opciones: { 'bosque': { alto: 0.62 } } },
 
     // 3 · ACRECIÓN — el shader "Accretion" de @XorDev (shadertoy.com/view/WcKXDV) sobre la página, en grises
     //     ajustes: opciones: { 'acrecion': { tamano: 1, escala: 1, velocidad: 1, pasos: 20, brillo: 1 } }
     //     (pasos baja el costo en teléfonos lentos: 14 o 16 se ve casi igual)
     //     (el efecto anterior sigue disponible: { efecto: 'estalagmitas' })
-    { efecto: 'acrecion', marco: false, opciones: { 'acrecion': { brillo: 0.6 } } },
+    { efecto: 'acrecion', marco: false, opciones: { 'acrecion': { brillo: 0.6, mira: true, z: 0.32, tamano: 0.9 } } },
 
     // 4 · ESPIRAL — esfera de vidrio con espirales adentro, del shader de Matthias Hurrle (@atzedent), flotando sobre la página
     //     ajustes: opciones: { 'espiral': { tamano: 0.62, z: 0.24, pasos: 60, velocidad: 1 } }
     //     (pasos baja el costo en teléfonos lentos: 40 se ve casi igual)
     //     (el efecto anterior sigue disponible: { efecto: 'estalactitas' })
-    { efecto: 'espiral', marco: false },
+    { efecto: 'espiral', marco: false, opciones: { 'espiral': { z: 0.4, tamano: 0.68 } } },
 
     // 5 · SINAPSIS — neuronas suspendidas; el impulso viaja por el axón, destella en la sinapsis y la siguiente dispara
     //     ajustes: opciones: { 'sinapsis': { neuronas: 22, viaje: 0.9 } }
-    { efecto: 'sinapsis', marco: false },
+    { efecto: 'sinapsis', marco: false, opciones: { 'sinapsis': { alto: 0.58 } } },
 
     // 6 · AGUJERO NEGRO — horizonte de sucesos, anillo de fotones, disco de acreción en espiral y estrellas que caen
     //     ajustes: opciones: { 'hoyo-negro': { radio: 0.06, disco: 0.36, inclina: 12, estrellas: 1600 } }
-    { efecto: 'hoyo-negro', marco: false }
+    { efecto: 'hoyo-negro', marco: false, opciones: { 'hoyo-negro': { z: 0.34, inclina: 18 } } }
 
   ]
 };
 
 // Opciones finas: cualquier parámetro de los componentes se puede pisar por escena, por ejemplo
 //   opciones: { 'genesis': { gather: 6 }, 'dna-helix': { segments: 120 }, 'marco-luz': {...} }
+// Altura: todas las escenas se levantan sobre la página para leerse en volumen al mirarlas de costado
+//   (alto, z y mira en las opciones de cada una).
 // Otros interruptores por escena: girar: false · helice: false · red: false · sonido: false · marco: false · target: 3

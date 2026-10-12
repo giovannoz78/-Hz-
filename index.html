@@ -2307,7 +2307,7 @@
             float w=aH*aH*0.008*uViento;                                                       // viento: se mece más arriba
             p.x+=sin(uTime*1.3+position.y*9.0+aR)*w; p.y+=cos(uTime*1.1+position.x*7.0)*w*0.6;
             float sc0=exp(-pow((p.x-uScan)/0.012,2.0));                                        // línea de escaneo
-            vA=(aB*0.42*(0.75+0.25*sin(uTime*2.0+aR*30.0))+sc0*0.5)*vis*uFade;   // los puntos se suman entre sí: cada uno aporta poco
+            vA=(aB*0.3*(0.75+0.25*sin(uTime*2.0+aR*30.0))+sc0*0.5)*vis*uFade;   // los puntos se suman entre sí: cada uno aporta poco
             vec4 mv=modelViewMatrix*vec4(p,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
             gl_PointSize=clamp(0.0048*(1.0+sc0*0.8)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,6.0);
             gl_Position=projectionMatrix*mv; }`,
@@ -2408,7 +2408,7 @@
        Juan Carlos Ponce Campuzano, llevado a un plano sobre la página, en grises y con bordes disueltos. -->
   <script>
   AFRAME.registerComponent('acrecion',{
-    schema:{ tamano:{default:1.0}, z:{default:0.01}, escala:{default:1.0}, velocidad:{default:1.0}, pasos:{default:20}, brillo:{default:1.0} },
+    schema:{ tamano:{default:1.0}, z:{default:0.01}, escala:{default:1.0}, velocidad:{default:1.0}, pasos:{default:20}, brillo:{default:1.0}, mira:{default:false} },   // mira: flota de frente a quien mira
     init(){
       const T=AFRAME.THREE,d=this.data;
       this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
@@ -2449,6 +2449,7 @@
             float a=clamp(y,0.0,1.0)*borde*uFade;
             gl_FragColor=vec4(vec3(a),0.0); }`},LUZ)));
       this.mesh.position.z=d.z; this.mesh.renderOrder=40; this.mesh.visible=false; this.el.object3D.add(this.mesh);
+      this._q=new T.Quaternion(); this._pq=new T.Quaternion();
       this.t=0; this.running=false;
       this.anchor.addEventListener('targetFound',()=>this.start());
       this.anchor.addEventListener('targetLost',()=>{ clearTimeout(this._lostT); this._lostT=setTimeout(()=>this.reset(),2000); });
@@ -2459,6 +2460,7 @@
       if(!this.running){ if(this.anchor.components&&this.anchor.components['mindar-image-target']&&this.anchor.object3D.visible) this.start(); if(!this.running) return; }
       const st=Math.min(0.05,(dt||16)/1000); this.t+=st;
       this.u.iTime.value=this.t*this.data.velocidad; this.u.uFade.value=Math.min(1,this.t/2);
+      if(this.data.mira){ const cam=this.el.sceneEl.camera; if(cam){ cam.getWorldQuaternion(this._q); this.el.object3D.getWorldQuaternion(this._pq); this.mesh.quaternion.copy(this._pq.invert().multiply(this._q)); } }
     }
   });
   </script>
@@ -2596,7 +2598,7 @@
       this.lente=new T.Mesh(new T.PlaneGeometry(d.radio*5,d.radio*5),lenteMat); this.lente.renderOrder=31; this.root.add(this.lente);
       // estrellas del cosmos cayendo en espiral, cada vez más rápidas y estiradas
       const NS=d.estrellas; this.NS=NS; this.sa=new Float32Array(NS*4);
-      for(let i=0;i<NS;i++){ this.sa[i*4]=d.radio*1.8+Math.pow(rnd(),0.7)*0.5; this.sa[i*4+1]=rnd()*6.283; this.sa[i*4+2]=(rnd()-0.5)*0.3; this.sa[i*4+3]=rnd(); }
+      for(let i=0;i<NS;i++){ this.sa[i*4]=d.radio*1.8+Math.pow(rnd(),0.7)*0.5; this.sa[i*4+1]=rnd()*6.283; this.sa[i*4+2]=(rnd()-0.5)*0.7; this.sa[i*4+3]=rnd(); }
       this.spos=new Float32Array(NS*3); this.sbr=new Float32Array(NS);
       const sg=new T.BufferGeometry(); sg.setAttribute('position',new T.BufferAttribute(this.spos,3)); sg.setAttribute('aB',new T.BufferAttribute(this.sbr,1));
       const S=32,c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d'); const gr=x.createRadialGradient(S/2,S/2,0,S/2,S/2,S/2);
@@ -2621,7 +2623,7 @@
       // estrellas: órbita kepleriana que se va cerrando; al cruzar el horizonte renacen lejos
       const A=this.sa, rh=d.radio;
       for(let i=0;i<this.NS;i++){ let r=A[i*4]; const w=0.55*Math.pow(rh*2/r,1.5);
-        A[i*4+1]+=w*st*3.0; r-=st*0.012*Math.pow(rh*2/r,2.0)*(0.5+A[i*4+3]); if(r<rh*1.05){ r=0.32+Math.random()*0.22; A[i*4+2]=(Math.random()-0.5)*0.3; } A[i*4]=r;
+        A[i*4+1]+=w*st*3.0; r-=st*0.012*Math.pow(rh*2/r,2.0)*(0.5+A[i*4+3]); if(r<rh*1.05){ r=0.32+Math.random()*0.22; A[i*4+2]=(Math.random()-0.5)*0.7; } A[i*4]=r;
         const z=A[i*4+2]*Math.max(0,(r-rh*2)/0.5)*0.4;                                   // de lejos vienen de todos lados; cerca, se aplastan en el disco
         this.spos[i*3]=Math.cos(A[i*4+1])*r; this.spos[i*3+1]=Math.sin(A[i*4+1])*r; this.spos[i*3+2]=z;
         this.sbr[i]=Math.min(1.6,(0.25+0.75*A[i*4+3])*(1+0.6*rh*2/r)); }
@@ -3052,6 +3054,8 @@
       queda:{default:12},           // segundos que permanece formado antes de marchitarse
       marchita:{default:4},
       descanso:{default:2},
+      trepa:{default:0.45},          // proporción de hifas que suben en el aire (0 = todo pegado a la página)
+      alto:{default:0.42},           // hasta qué altura trepan
       color:{default:'#FFFFFF'}, opacidad:{default:0.85}, z:{default:0.006}, seed:{default:7}
     },
     init(){
@@ -3062,7 +3066,7 @@
       const P=[],Tm=[],Dd=[],tips=[],ends=[];
       for(let k=0;k<d.esporas;k++){
         const a=k*2.399+rnd()*0.6, r=k===0?rnd()*0.05:d.radio*(0.3+rnd()*0.35), x=Math.cos(a)*r, y=Math.sin(a)*r, n=6+Math.floor(rnd()*5);
-        for(let j=0;j<n;j++) tips.push({x,y,dir:rnd()*Math.PI*2,t:rnd()*1.2,dist:0,v:0.75+rnd()*0.5,w:(rnd()-0.5)*0.08});
+        for(let j=0;j<n;j++){ const sube=rnd()<d.trepa; tips.push({x,y,z:0,el:sube?0.7+rnd()*0.6:0.02,dir:rnd()*Math.PI*2,t:rnd()*1.2,dist:0,v:0.75+rnd()*0.5,w:(rnd()-0.5)*0.08}); }   // algunas hifas trepan en el aire
       }
       const vel=d.radio/(d.crece*0.8); const G=70, occ=new Uint8Array(G*G), cell=(x,y)=>Math.min(G-1,Math.max(0,Math.floor((x/d.radio*0.5+0.5)*G)))*G+Math.min(G-1,Math.max(0,Math.floor((y/d.radio*0.5+0.5)*G)));
       let seg=0;
@@ -3070,22 +3074,23 @@
         const nt=[];
         for(const p of tips){
           p.w+=(rnd()-0.5)*0.02; p.w*=0.85; p.dir+=p.w+(rnd()-0.5)*d.giro;     // serpentea con memoria, como una hifa
-          const nx=p.x+Math.cos(p.dir)*d.paso, ny=p.y+Math.sin(p.dir)*d.paso;
-          const rr=Math.hypot(nx,ny); if(rr>d.radio){ ends.push(p.x,p.y,p.t); continue; }
-          const ci=cell(nx,ny); if(occ[ci]>=11 && p.dist>d.paso*6){ ends.push(p.x,p.y,p.t); continue; } if(occ[ci]<255) occ[ci]++;
+          p.el+=(rnd()-0.5)*0.1-(p.z>d.alto*0.85?0.05:0); p.el=Math.max(-0.4,Math.min(1.3,p.el)); const ch=Math.cos(p.el);
+          const nx=p.x+Math.cos(p.dir)*d.paso*ch, ny=p.y+Math.sin(p.dir)*d.paso*ch, nz=Math.max(0,Math.min(d.alto,p.z+Math.sin(p.el)*d.paso));
+          const rr=Math.hypot(nx,ny); if(rr>d.radio){ ends.push(p.x,p.y,p.z,p.t); continue; }
+          const ci=cell(nx,ny); if(nz<0.02 && occ[ci]>=11 && p.dist>d.paso*6){ ends.push(p.x,p.y,p.z,p.t); continue; } if(nz<0.02 && occ[ci]<255) occ[ci]++;
           const dt=d.paso/(vel*p.v);
-          P.push(p.x,p.y,nx,ny); Tm.push(p.t,p.t+dt); Dd.push(p.dist,p.dist+d.paso); seg++;
-          p.x=nx; p.y=ny; p.t+=dt; p.dist+=d.paso;
-          if(p.t>d.crece){ ends.push(p.x,p.y,p.t); continue; }
+          P.push(p.x,p.y,p.z,nx,ny,nz); Tm.push(p.t,p.t+dt); Dd.push(p.dist,p.dist+d.paso); seg++;
+          p.x=nx; p.y=ny; p.z=nz; p.t+=dt; p.dist+=d.paso;
+          if(p.t>d.crece){ ends.push(p.x,p.y,p.z,p.t); continue; }
           nt.push(p);
-          if(rnd()<d.rama*(rr<d.radio*0.85?1:0.4)) nt.push({x:nx,y:ny,dir:p.dir+(rnd()<0.5?-1:1)*(0.35+rnd()*0.5),t:p.t,dist:p.dist,v:p.v*(0.8+rnd()*0.35),w:0});
+          if(rnd()<d.rama*(rr<d.radio*0.85?1:0.4)) nt.push({x:nx,y:ny,z:nz,el:p.el+(rnd()-0.5)*0.6+(rnd()<d.trepa*0.3?0.5:0),dir:p.dir+(rnd()<0.5?-1:1)*(0.35+rnd()*0.5),t:p.t,dist:p.dist,v:p.v*(0.8+rnd()*0.35),w:0});
         }
         tips.length=0; tips.push(...nt);
       }
-      tips.forEach(p=>ends.push(p.x,p.y,p.t));
+      tips.forEach(p=>ends.push(p.x,p.y,p.z,p.t));
       const N=Tm.length, pos=new Float32Array(N*3), aT=new Float32Array(N), aD=new Float32Array(N);
       let Dmax=0;
-      for(let i=0;i<N;i++){ pos[i*3]=P[i*2]; pos[i*3+1]=P[i*2+1]; pos[i*3+2]=d.z+0.002*Math.sin(P[i*2]*40+P[i*2+1]*31); aT[i]=Tm[i]; aD[i]=Dd[i]; Dmax=Math.max(Dmax,Dd[i]); }
+      for(let i=0;i<N;i++){ pos[i*3]=P[i*3]; pos[i*3+1]=P[i*3+1]; pos[i*3+2]=d.z+P[i*3+2]+0.002*Math.sin(P[i*3]*40+P[i*3+1]*31); aT[i]=Tm[i]; aD[i]=Dd[i]; Dmax=Math.max(Dmax,Dd[i]); }
       const g=new T.BufferGeometry(); g.setAttribute('position',new T.BufferAttribute(pos,3)); g.setAttribute('aT',new T.BufferAttribute(aT,1)); g.setAttribute('aD',new T.BufferAttribute(aD,1));
       this.u={uTime:{value:0},uFade:{value:1},uPulse:{value:-1},uPulseK:{value:0},uDmax:{value:Dmax},uColor:{value:new T.Color(HZC(d.color))},uOp:{value:d.opacidad}};
       const LUZ={blending:T.CustomBlending,blendEquation:T.AddEquation,blendSrc:T.OneFactor,blendDst:T.OneFactor,blendSrcAlpha:T.ZeroFactor,blendDstAlpha:T.OneFactor};
@@ -3096,12 +3101,12 @@
           void main(){ if(vA<0.5) discard;
             float joven=exp(-vAge*1.6);                                              // la hifa recién formada brilla más
             float p=exp(-pow((vD/uDmax-uPulse)/0.035,2.0))*uPulseK;                  // nutriente que viaja desde las esporas hacia las puntas
-            float a=(0.22+0.8*joven+1.4*p)*uOp*uFade;
+            float a=(0.12+0.6*joven+1.2*p)*uOp*uFade;
             gl_FragColor=vec4(uColor*a,0.0); }`},LUZ));
       this.lines=new T.LineSegments(g,mat); this.lines.frustumCulled=false; this.lines.renderOrder=50;
       // puntas: un punto de luz en cada extremo que avanza, y esporas que laten
-      const M=ends.length/3, ep=new Float32Array(M*3), et=new Float32Array(M);
-      for(let i=0;i<M;i++){ ep[i*3]=ends[i*3]; ep[i*3+1]=ends[i*3+1]; ep[i*3+2]=d.z+0.001; et[i]=ends[i*3+2]; }
+      const M=ends.length/4, ep=new Float32Array(M*3), et=new Float32Array(M);
+      for(let i=0;i<M;i++){ ep[i*3]=ends[i*4]; ep[i*3+1]=ends[i*4+1]; ep[i*3+2]=d.z+ends[i*4+2]+0.001; et[i]=ends[i*4+3]; }
       const pg=new T.BufferGeometry(); pg.setAttribute('position',new T.BufferAttribute(ep,3)); pg.setAttribute('aT',new T.BufferAttribute(et,1));
       const S=64,cv=document.createElement('canvas'); cv.width=cv.height=S; const x=cv.getContext('2d'); const gr=x.createRadialGradient(S/2,S/2,0,S/2,S/2,S/2);
       gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(0.3,'rgba(255,255,255,0.4)'); gr.addColorStop(1,'rgba(255,255,255,0)'); x.fillStyle=gr; x.fillRect(0,0,S,S);
