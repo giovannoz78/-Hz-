@@ -14,7 +14,7 @@ window.HZ = {
   subtitulo: '',
   frase:     '',
   guia:      'Apuntá la cámara a la imagen',
-  guia2:     '',
+  guia2:     'Movete alrededor de la imagen:\ncada escena tiene volumen.',
 
   // texto en pantalla mientras se ve una tarjeta ('' = sin texto)
   aviso:     '',
@@ -28,7 +28,6 @@ window.HZ = {
   //         'inferno' · 'arbol' · 'montana' · o una lista propia de 6 colores, de lo tenue a lo intenso
   //   halo: velo suave alrededor de los trazos (0 = nada, 1 = suave)
   //   camaraTermica: la cámara en grises con sus zonas más claras en calor, como una imagen satelital (false = cámara en grises)
-  //   camara: false muestra la cámara en color (los triggers de cristal se ven con su azul); true la pasa a grises
   //   umbral: desde qué brillo de la cámara empieza el calor (0.5 = más zonas calientes, 0.75 = solo luces fuertes)
   //   cercania: cuánto calienta acercar el teléfono (0 = nada, 1 = normal, 2 = mucho)
   // modo 'bn' vuelve al blanco y negro puro.
@@ -52,22 +51,23 @@ window.HZ = {
     //   ola / olaVel: pulsos de luz que la recorren · viento: cuánto se mece · giro: velocidad de giro
     // Los efectos anteriores siguen disponibles con -lineas: { efecto: 'micelio-lineas' }
 
-    // 0 · ESCANEO LiDAR — campo de grietas de un glaciar; el pulso del escáner lo barre
+    // 0 · MICELIO — trama circular de hifas finísimas sobre la página; pulsos de luz que salen de los centros
     { efecto: 'micelio', marco: false },
 
-    // 1 · ESCANEO LiDAR — canal de deshielo entre dos laderas de hielo
-    //     (la mosca sigue disponible: { efecto: 'mosca' } · el vórtice doble: { efecto: 'espejo' })
+    // 1 · MOSCA — tomografía de una mosca en nube de puntos, violeta y naranja, de pie sobre la tarjeta
+    //     (el vórtice doble "así arriba, como abajo" sigue disponible: { efecto: 'espejo' })
     { efecto: 'deshielo', marco: false },
 
     // 2 · BOSQUE — un claro circular de fustes verticales de puntos que se mecen; al acercar el teléfono sube el viento
     { efecto: 'bosque', marco: false },
 
-    // 3 · ESCANEO LiDAR — campo de seracs (torres de hielo partidas)
+    // 3 · CORAL — escaneo real de un coral (160 mil puntos con su color)
     { efecto: 'coral', marco: false },
 
 
-    // 4 · ESCANEO LiDAR — frente de glaciar sobre el agua, con su pico
-    //     (el relieve en malla cian sigue disponible: { efecto: 'terreno' } · la esfera de espirales: { efecto: 'espiral' })
+    // 4 · TERRENO — relieve en nube de puntos que dibuja una malla cian: montañas que respiran y se desplazan lento; al acercar el teléfono se levantan
+    //     ajustes: opciones: { 'terreno': { ancho: 1.3, alto: 0.2, lineas: 72, velocidad: 1, brillo: 1 } }
+    //     (la esfera de espirales sigue disponible: { efecto: 'espiral' })
     { efecto: 'glaciar', marco: false },
 
     // 5 · SINAPSIS — núcleos incandescentes unidos por arcos de polvo; los impulsos viajan de uno a otro
