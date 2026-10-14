@@ -28,10 +28,11 @@ window.HZ = {
   //         'inferno' · 'arbol' · 'montana' · o una lista propia de 6 colores, de lo tenue a lo intenso
   //   halo: velo suave alrededor de los trazos (0 = nada, 1 = suave)
   //   camaraTermica: la cámara en grises con sus zonas más claras en calor, como una imagen satelital (false = cámara en grises)
+  //   camara: false muestra la cámara en color (los triggers de cristal se ven con su azul); true la pasa a grises
   //   umbral: desde qué brillo de la cámara empieza el calor (0.5 = más zonas calientes, 0.75 = solo luces fuertes)
   //   cercania: cuánto calienta acercar el teléfono (0 = nada, 1 = normal, 2 = mucho)
   // modo 'bn' vuelve al blanco y negro puro.
-  paleta:  { modo: 'glow', mapa: 'termico', halo: 1.0, contraste: 1.0, camaraTermica: false, umbral: 0.62, cercania: 1.0, camara: true },
+  paleta:  { modo: 'glow', mapa: 'termico', halo: 1.0, contraste: 1.0, camaraTermica: false, umbral: 0.62, cercania: 1.0, camara: false },
 
   // sonido: cada escena tiene su capa sintetizada en el teléfono; arranca con el primer toque en pantalla (o el botón 🔊).
   // false lo apaga. volumen: 0 a 1.
