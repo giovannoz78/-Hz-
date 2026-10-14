@@ -54,9 +54,10 @@ window.HZ = {
     // 0 · MICELIO — trama circular de hifas finísimas sobre la página; pulsos de luz que salen de los centros
     { efecto: 'micelio', marco: false },
 
-    // 1 · MOSCA — tomografía de una mosca en nube de puntos, violeta y naranja, de pie sobre la tarjeta
-    //     (el vórtice doble "así arriba, como abajo" sigue disponible: { efecto: 'espejo' })
-    { efecto: 'mosca', marco: false },
+    // 1 · DESHIELO — canal de agua de deshielo tallado en el hielo, en nube de puntos (180 mil puntos con el color de la foto);
+    //     el agua corre hundida entre las dos laderas y la recorren pulsos de luz; suena a hilo de agua y gotas
+    //     (la mosca sigue disponible: { efecto: 'mosca' } · el vórtice doble: { efecto: 'espejo' })
+    { efecto: 'deshielo', marco: false },
 
     // 2 · BOSQUE — un claro circular de fustes verticales de puntos que se mecen; al acercar el teléfono sube el viento
     { efecto: 'bosque', marco: false },
@@ -65,10 +66,10 @@ window.HZ = {
     { efecto: 'coral', marco: false },
 
 
-    // 4 · TERRENO — relieve en nube de puntos que dibuja una malla cian: montañas que respiran y se desplazan lento; al acercar el teléfono se levantan
-    //     ajustes: opciones: { 'terreno': { ancho: 1.3, alto: 0.2, lineas: 72, velocidad: 1, brillo: 1 } }
-    //     (la esfera de espirales sigue disponible: { efecto: 'espiral' })
-    { efecto: 'terreno', marco: false },
+    // 4 · GLACIAR — frente de hielo en nube de puntos (190 mil puntos con el color de la foto: blancos, celestes y azul profundo
+    //     en las grietas) parado sobre el agua con témpanos; cruje y cada tanto se desprende un bloque
+    //     (el relieve en malla cian sigue disponible: { efecto: 'terreno' } · la esfera de espirales: { efecto: 'espiral' })
+    { efecto: 'glaciar', marco: false },
 
     // 5 · SINAPSIS — núcleos incandescentes unidos por arcos de polvo; los impulsos viajan de uno a otro
     { efecto: 'sinapsis', marco: false },
