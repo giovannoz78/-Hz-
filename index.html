@@ -2505,110 +2505,6 @@
     }
   });
   </script>
-  <!-- TORMENTA: al enfocar el trigger se levanta una ventisca sobre una forma de hielo en nube de puntos.
-       Física real en el teléfono: cada copo tiene velocidad, lo arrastra un viento con ráfagas y remolinos, la gravedad lo baja,
-       y al chocar con el hielo o con el piso se deposita y lo va cubriendo; después se funde y vuelve a volar.
-       La tormenta crece en los primeros segundos; acercar el teléfono la intensifica. Relámpagos con trueno. -->
-  <script>
-  AFRAME.registerComponent('tormenta',{
-    schema:{ src:{default:''}, tamano:{default:1}, punto:{default:0.0034}, nieve:{default:30000}, viento:{default:1}, giro:{default:0.5}, brillo:{default:1.1} },
-    init(){
-      const T=AFRAME.THREE,d=this.data;
-      this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
-      this.t=0; this.I=0; this.running=false; this.flash=0; this.nextFlash=6;
-      // ---- nieve ----
-      const N=d.nieve; this.N=N;
-      this.p=new Float32Array(N*3); this.v=new Float32Array(N*3); this.st=new Float32Array(N); this.age=new Float32Array(N); this.ttl=new Float32Array(N);
-      for(let i=0;i<N;i++) this.respawn(i,true);
-      const g=new T.BufferGeometry(); this.pAttr=new T.BufferAttribute(this.p,3); this.pAttr.setUsage(T.DynamicDrawUsage);
-      this.sAttr=new T.BufferAttribute(this.st,1); this.sAttr.setUsage(T.DynamicDrawUsage);
-      g.setAttribute('position',this.pAttr); g.setAttribute('aS',this.sAttr);
-      const R=new Float32Array(N); for(let i=0;i<N;i++) R[i]=Math.random(); g.setAttribute('aR',new T.BufferAttribute(R,1));
-      this.uS={uViewH:{value:800},uPunto:{value:d.punto},uFlash:{value:0},uI:{value:0}};
-      this.snow=new T.Points(g,new T.ShaderMaterial({uniforms:this.uS,transparent:true,depthWrite:false,depthTest:true,blending:T.AdditiveBlending,
-        vertexShader:`attribute float aS,aR; uniform float uViewH,uPunto,uFlash,uI; varying vec3 vC; varying float vA;
-          void main(){ float dep=step(0.5,aS)*step(aS,1.5), off=step(2.5,aS);
-            vC=mix(mix(vec3(0.35,0.80,1.0),vec3(0.75,0.95,1.0),aR), vec3(0.92,0.98,1.0), dep)*(1.0+uFlash*2.0);
-            vA=(1.0-off)*(dep>0.5?0.8:0.75+0.5*aR)*uI;
-            vec4 mv=modelViewMatrix*vec4(position,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
-            gl_PointSize=clamp(uPunto*(dep>0.5?0.8:0.9+1.3*aR)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.5,14.0);
-            gl_Position=projectionMatrix*mv; }`,
-        fragmentShader:`precision mediump float; varying vec3 vC; varying float vA;
-          void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25||vA<0.01) discard; gl_FragColor=vec4(vC*exp(-e*7.0)*vA,1.0); }`}));
-      this.snow.frustumCulled=false; this.snow.visible=false;
-      const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.snow.layers.set(2); window.hzCapa2=true; }
-      this.el.object3D.add(this.snow);
-      // ---- campo de alturas del hielo (para que la nieve choque) ----
-      this.G=56; this.hx=0.75; this.hy=0.6; this.H=new Float32Array(this.G*this.G);
-      this.cargar();
-      this.anchor.addEventListener('targetFound',()=>this.start());
-      this.anchor.addEventListener('targetLost',()=>{ clearTimeout(this._lost); this._lost=setTimeout(()=>this.stop(),1500); });
-    },
-    respawn(i,ini){ const d=this.data, p=this.p, v=this.v;
-      p[i*3]=ini? (Math.random()*2-1)*0.9 : -0.95-Math.random()*0.2; p[i*3+1]=(Math.random()*2-1)*0.6; p[i*3+2]=0.05+Math.random()*0.95;
-      v[i*3]=0.3*d.viento; v[i*3+1]=0; v[i*3+2]=-0.05; this.st[i]=0; this.age[i]=0; this.ttl[i]=2.5+Math.random()*4; },
-    alto(x,y){ const G=this.G; const gx=Math.floor((x/this.hx*0.5+0.5)*G), gy=Math.floor((y/this.hy*0.5+0.5)*G);
-      if(gx<0||gy<0||gx>=G||gy>=G) return 0; return this.H[gy*G+gx]; },
-    cargar(){
-      const T=AFRAME.THREE,d=this.data; if(!d.src) return;
-      fetch(d.src).then(r=>r.arrayBuffer()).then(buf=>{
-        const dv=new DataView(buf), n=dv.getUint32(0,true), E=dv.getFloat32(4,true);
-        const qi=new Int16Array(buf,8,n*3), col=new Uint8Array(buf,8+n*6,n*4);
-        const P=new Float32Array(n*3), C=new Uint8Array(n*3), G=this.G;
-        for(let i=0;i<n;i++){ for(let k=0;k<3;k++) P[i*3+k]=qi[i*3+k]/32767*E*d.tamano; for(let k=0;k<3;k++) C[i*3+k]=col[i*4+k];
-          const x=P[i*3],y=P[i*3+1],z=P[i*3+2]; const gx=Math.floor((x/this.hx*0.5+0.5)*G), gy=Math.floor((y/this.hy*0.5+0.5)*G);
-          if(gx>=0&&gy>=0&&gx<G&&gy<G&&z>this.H[gy*G+gx]) this.H[gy*G+gx]=z; }
-        const g=new T.BufferGeometry(); g.setAttribute('position',new T.BufferAttribute(P,3)); g.setAttribute('aC',new T.BufferAttribute(C,3,true));
-        this.uB={uViewH:{value:800},uPunto:{value:d.punto},uBrillo:{value:d.brillo},uFlash:{value:0},uFade:{value:0}};
-        this.body=new T.Points(g,new T.ShaderMaterial({uniforms:this.uB,
-          vertexShader:`attribute vec3 aC; uniform float uViewH,uPunto,uBrillo,uFlash,uFade; varying vec3 vC;
-            void main(){ vC=(aC*uBrillo+uFlash*vec3(0.5,0.75,0.9))*uFade; vec4 mv=modelViewMatrix*vec4(position,1.0);
-              float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
-              gl_PointSize=clamp(uPunto*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.5,12.0); gl_Position=projectionMatrix*mv; }`,
-          fragmentShader:`precision mediump float; varying vec3 vC; void main(){ vec2 q=gl_PointCoord-0.5; if(dot(q,q)>0.25) discard; gl_FragColor=vec4(vC,1.0); }`}));
-        this.body.frustumCulled=false; this.body.visible=this.running;
-        const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.body.layers.set(2); window.hzCapa2=true; }
-        this.el.object3D.add(this.body);
-      }).catch(e=>console.warn('[Hz] tormenta: no se pudo leer',d.src,e));
-    },
-    start(){ clearTimeout(this._lost); if(this.running) return; this.running=true; this.t=0; this.I=0; this.snow.visible=true; if(this.body) this.body.visible=true; },
-    stop(){ this.running=false; this.snow.visible=false; if(this.body) this.body.visible=false; for(let i=0;i<this.N;i++) this.respawn(i,true); },
-    tick(t,dt){
-      if(!this.running){ if(this.anchor.object3D.visible&&this.anchor.components&&this.anchor.components['mindar-image-target']) this.start(); else return; }
-      const d=this.data, s=Math.min(0.04,(dt||16)/1000); this.t+=s; const tt=this.t;
-      let k=+window.hzCalor; if(!isFinite(k)) k=0.5;
-      this.I=Math.min(1,this.t/4); const I=this.I*(0.75+0.6*k);                          // la tormenta crece al enfocar; acercarse la intensifica
-      window.hzTormenta=I;
-      const rafaga=0.55+0.45*Math.sin(tt*0.9)+0.25*Math.sin(tt*2.3+1.0);               // ráfagas
-      const W=d.viento*I*rafaga*1.35, GR=0.28, DR=2.6, giro=d.giro*I;
-      const p=this.p, v=this.v, st=this.st, N=this.N, act=Math.floor(N*Math.min(1,0.15+this.I));
-      for(let i=0;i<N;i++){ const j=i*3;
-        if(i>=act){ st[i]=3; continue; } if(st[i]===3) this.respawn(i,false);
-        if(st[i]===1){ this.age[i]+=s; if(this.age[i]>this.ttl[i] || (W>1.2&&Math.random()<0.002)){ st[i]=0; v[j+2]=0.4; } continue; }   // se funde o la ráfaga la vuelve a levantar
-        const x=p[j],y=p[j+1],z=p[j+2], r=Math.hypot(x,y)+0.15;
-        // viento: corriente principal + remolino alrededor del hielo + turbulencia
-        const wx=W*(1.0+0.6*Math.sin(1.7*y+2.1*z+tt*1.3)) - giro*y/r*0.6;
-        const wy=W*0.5*Math.sin(2.3*x-1.4*z+tt*1.1) + giro*x/r*0.6;
-        const wz=W*0.35*Math.sin(2.9*x+1.9*y-tt*1.7);
-        v[j]+=(wx-v[j])*DR*s; v[j+1]+=(wy-v[j+1])*DR*s; v[j+2]+=((wz-v[j+2])*DR - GR)*s;
-        let nx=x+v[j]*s, ny=y+v[j+1]*s, nz=z+v[j+2]*s;
-        const h=this.alto(nx,ny);
-        if(nz<h+0.003){   // choca: se deposita sobre el hielo o el piso
-          if(Math.random()>0.16){ const sp=Math.hypot(v[j],v[j+1]); v[j+2]=Math.abs(v[j+2])*0.35+0.25*sp*Math.random(); v[j]*=0.7; v[j+1]+=(Math.random()-0.5)*0.4; nz=h+0.006; }   // rebota y se arrastra por la superficie   // rebota
-          else { nz=h+0.002+Math.random()*0.006; st[i]=1; this.age[i]=0; v[j]=v[j+1]=v[j+2]=0; } }
-        p[j]=nx; p[j+1]=ny; p[j+2]=nz;
-        if(nx>1.0||Math.abs(ny)>0.9||nz>1.4) this.respawn(i,false);
-      }
-      this.pAttr.needsUpdate=true; this.sAttr.needsUpdate=true;
-      // relámpagos
-      this.nextFlash-=s; if(this.nextFlash<=0 && this.I>0.8){ this.flash=1; this.nextFlash=5+Math.random()*9; const ef=this.anchor.dataset&&this.anchor.dataset.efecto; window.HZS&&HZS.ev(ef,'trueno'); }
-      this.flash*=Math.exp(-s*6); const fl=this.flash*(0.6+0.4*Math.sin(tt*60));
-      this.uS.uFlash.value=fl; this.uS.uI.value=Math.min(1,this.t/1.5);
-      const r=this.el.sceneEl.renderer, vh=r?r.getContext().drawingBufferHeight:800; this.uS.uViewH.value=vh;
-      if(this.uB){ this.uB.uFlash.value=fl; this.uB.uViewH.value=vh; this.uB.uFade.value=Math.min(1,this.t/1.2); }
-    }
-  });
-  </script>
   <!-- BOSQUE EN NUBE DE PUNTOS: árboles generados por ramificación, como un escaneo LiDAR; el bosque crece
        desde la página, se mece con el viento y lo recorre una línea de escaneo. -->
   <script>
@@ -3641,11 +3537,9 @@
       EFECTOS[n]=(e,i)=>({anchor:'', inner:marco(e,i,0.5)+'<a-entity nube="'+esc(attr('nube',Object.assign({},e,{opciones:Object.assign({},e.opciones,{nube:Object.assign({},(e.opciones||{})[n]||{},(e.opciones||{}).nube||{})})}),NUBES[n]))+'"></a-entity>'}); });
 
     // HIELO: las escenas 0, 1, 3 y 4 son fenómenos de hielo que salen de la imagen (las nubes anteriores siguen con el sufijo -nube)
-    // TORMENTA: en las escenas 0, 1, 3 y 4, al enfocar se levanta una ventisca sobre una forma de hielo (los efectos anteriores siguen con -nube)
-    const TORM={ micelio:{src:'./assets/hielo-placas.bin',tamano:0.85,giro:0.3}, deshielo:{src:'./assets/hielo-cueva.bin',tamano:0.95,giro:0.8},
-      coral:{src:'./assets/hielo-cristales.bin',tamano:1.0,giro:1.1}, glaciar:{src:'./assets/hielo-glaciar.bin',tamano:1.1,viento:1.2,giro:0.4} };
-    Object.keys(TORM).forEach(n=>{ EFECTOS[n+'-nube']=EFECTOS[n];
-      EFECTOS[n]=(e,i)=>({anchor:'', inner:'<a-entity tormenta="'+esc(attr('tormenta',e,TORM[n]))+'"></a-entity>'}); });
+    const HIELO={ micelio:{modo:'placas'}, deshielo:{modo:'burbujas',ax:-0.29,ay:0.10}, coral:{modo:'vortice',asp:0.947}, glaciar:{modo:'desprende',ax:0.29,ay:0.33,asp:0.75} };
+    Object.keys(HIELO).forEach(n=>{ EFECTOS[n+'-nube']=EFECTOS[n];
+      EFECTOS[n]=(e,i)=>({anchor:'', inner:'<a-entity hielo="'+esc(attr('hielo',e,HIELO[n]))+'"></a-entity>'}); });
     ESC.forEach((e,i)=>{
       if(!e || (preview && i!==VER)) return;
       const f=EFECTOS[e.efecto]; if(!f){ console.warn('[Hz] efecto desconocido:',e.efecto); return; }
@@ -3882,19 +3776,10 @@
         'hoyo-negro':()=>{ const a=osc('sine',41,0.22,null), b=osc('sine',41.6,0.18,null), n=ruido(null,0.18,'lowpass',90,2), lfo=osc('sine',0.03,70,null); lfo.a.disconnect(); lfo.a.connect(n.f.frequency);
           return ()=>{ [a,b,lfo].forEach(x=>x.o.stop()); n.s.stop(); }; }
       };
-      const ventisca=()=>{ const c=S.ctx, aire=ruido(null,0.0,'bandpass',500,0.8), silbo=ruido(null,0.0,'bandpass',900,9), silbo2=ruido(null,0.0,'bandpass',1350,11), sub=ruido(null,0.0,'lowpass',120,1);
-          let vivo=true; const upd=()=>{ if(!vivo) return; const I=+window.hzTormenta||0, t=c.currentTime, g=0.5+0.5*Math.sin(t*0.9)+0.25*Math.sin(t*2.3+1);
-            aire.a.gain.setTargetAtTime(0.04+0.22*I*g,t,0.2); aire.f.frequency.setTargetAtTime(300+900*I*g,t,0.3);
-            silbo.a.gain.setTargetAtTime(0.05*I*g*g,t,0.3); silbo.f.frequency.setTargetAtTime(700+500*g,t,0.4);
-            silbo2.a.gain.setTargetAtTime(0.03*I*g,t,0.3); silbo2.f.frequency.setTargetAtTime(1100+600*Math.sin(t*0.5),t,0.5);
-            sub.a.gain.setTargetAtTime(0.08*I,t,0.5); setTimeout(upd,80); }; upd();
-          return ()=>{ vivo=false; [aire,silbo,silbo2,sub].forEach(x=>x.s.stop()); }; };
-      ['micelio','deshielo','coral','glaciar'].forEach(k=>{ DRONES[k]=ventisca; });
       S.start=(ef)=>{ if(!S.ctx||S.on[ef]||!DRONES[ef]) return; clearTimeout(S['_t'+ef]); S.on[ef]=DRONES[ef](); };
       S.stop=(ef)=>{ const f=S.on[ef]; if(!f) return; delete S.on[ef]; S['_t'+ef]=setTimeout(()=>{ try{ f(); }catch(e){} },400); };
       // eventos de cada efecto
       S.ev=(ef,x)=>{ if(!S.ctx||!S.on[ef]) return;
-        if(x==='trueno'){ chasquido(2400,0.08,0.35); setTimeout(()=>{ golpe(42,3.2,0.55,'sine',26); chasquido(180,2.4,0.45); },250+Math.random()*700); return; }   // relámpago y trueno
         if(ef==='micelio') golpe(62,0.9,0.5,'sine',38);                                                 // pulso de nutriente: latido grave
         else if(ef==='sinapsis'){ chasquido(5200,0.02,0.4); golpe(220*Math.pow(2,PENTA[(x||0)%PENTA.length]/12),0.35,0.18,'sine',null,true); }   // disparo
         else if(ef==='micelio'){ const f=2200+Math.random()*3000; golpe(f,0.5,0.08,'sine',f/9,true); chasquido(4200,0.012,0.12); }   // la laja se quiebra: el hielo canta
