@@ -3520,13 +3520,13 @@
     // NUBES DE PUNTOS: las siete escenas son nubes con su color, cada una con su movimiento.
     // Los efectos anteriores (líneas y shaders) siguen disponibles con el sufijo -lineas, por ejemplo { efecto: 'micelio-lineas' }.
     const NUBES={
-      micelio:     {src:'./assets/hielo-placas.bin',  punto:0.0032, base:0.75, ola:0.5, olaVel:0.12, olaLargo:1.2, brillo:1.2},
+      micelio:     {src:'./assets/lidar-grietas.bin', tamano:1.05, punto:0.0024, base:1, arma:3, ola:1.1, olaVel:0.16, olaLargo:1.0, brillo:1.15},
       mosca:       {src:'./assets/mosca.bin',      tamano:1.1, punto:0.0036, ola:0.25, olaVel:0.12, olaLargo:1.0, brillo:1.2},
       espejo:      {src:'./assets/espejo.bin',     punto:0.0028, giro:0.35, giroK:1.0, ola:0.7, olaVel:0.25, olaLargo:1.5},
       bosque:      {src:'./assets/bosque.bin',     base:1, punto:0.0034, viento:0.8, ola:0.6, olaVel:0.15, olaLargo:1.0},
-      coral:       {src:'./assets/hielo-espiral.bin', punto:0.0032, base:0.75, ola:0.4, olaVel:0.1, olaLargo:1.0, brillo:1.2},
-      glaciar:     {src:'./assets/hielo-montana.bin', punto:0.0032, base:0.75, ola:0.35, olaVel:0.07, olaLargo:1.0, brillo:1.2},
-      deshielo:    {src:'./assets/hielo-cueva.bin',   punto:0.0032, base:0.75, ola:0.6, olaVel:0.12, olaLargo:1.6, brillo:1.2},
+      coral:       {src:'./assets/lidar-seracs.bin',  tamano:1.05, punto:0.0026, base:1, arma:3, ola:1.1, olaVel:0.16, olaLargo:1.0, brillo:1.15},
+      glaciar:     {src:'./assets/lidar-frente.bin',  tamano:1.05, punto:0.0026, base:1, arma:3, ola:1.1, olaVel:0.16, olaLargo:1.0, brillo:1.15},
+      deshielo:    {src:'./assets/lidar-canal.bin',   tamano:1.05, punto:0.0026, base:1, arma:3, ola:1.1, olaVel:0.16, olaLargo:1.0, brillo:1.15},
       espiral:     {src:'./assets/espiral.bin',    tamano:1.45, punto:0.003, giro:0.3, ola:0.6, olaVel:0.22, olaLargo:2.0},
       sinapsis:    {src:'./assets/sinapsis.bin',   base:1, tamano:1.3, punto:0.0038, ola:1.4, olaVel:0.45, olaLargo:1.0},
       'hoyo-negro':{src:'./assets/hoyo-negro.bin', base:1, punto:0.004, giro:0.9, giroK:1.5, giroS:1, brillo:1.25}
@@ -3536,10 +3536,6 @@
     Object.keys(NUBES).forEach(n=>{ if(EFECTOS[n]) EFECTOS[n+'-lineas']=EFECTOS[n];
       EFECTOS[n]=(e,i)=>({anchor:'', inner:marco(e,i,0.5)+'<a-entity nube="'+esc(attr('nube',Object.assign({},e,{opciones:Object.assign({},e.opciones,{nube:Object.assign({},(e.opciones||{})[n]||{},(e.opciones||{}).nube||{})})}),NUBES[n]))+'"></a-entity>'}); });
 
-    // HIELO: las escenas 0, 1, 3 y 4 son fenómenos de hielo que salen de la imagen (las nubes anteriores siguen con el sufijo -nube)
-    const HIELO={ micelio:{modo:'placas'}, deshielo:{modo:'burbujas',ax:-0.29,ay:0.10}, coral:{modo:'vortice',asp:0.947}, glaciar:{modo:'desprende',ax:0.29,ay:0.33,asp:0.75} };
-    Object.keys(HIELO).forEach(n=>{ EFECTOS[n+'-nube']=EFECTOS[n];
-      EFECTOS[n]=(e,i)=>({anchor:'', inner:'<a-entity hielo="'+esc(attr('hielo',e,HIELO[n]))+'"></a-entity>'}); });
     ESC.forEach((e,i)=>{
       if(!e || (preview && i!==VER)) return;
       const f=EFECTOS[e.efecto]; if(!f){ console.warn('[Hz] efecto desconocido:',e.efecto); return; }
