@@ -52,24 +52,23 @@ window.HZ = {
     //   ola / olaVel: pulsos de luz que la recorren · viento: cuánto se mece · giro: velocidad de giro
     // Los efectos anteriores siguen disponibles con -lineas: { efecto: 'micelio-lineas' }
 
-    // 0 · PLACAS — el hielo se quiebra: lajas de luz cian se despegan de la imagen, se levantan girando hacia quien mira y vuelven a asentarse;
-    //     suena a lago congelado que canta  (la nube anterior: { efecto: 'micelio-nube' } · las hifas: { efecto: 'micelio-lineas' })
-    { efecto: 'micelio', marco: false, vista: { vista: 'plana' } },
+    // 0 · TORMENTA sobre un cordón de lajas de hielo (al enfocar se levanta la ventisca; la nieve se deposita y lo cubre; relámpagos)
+    { efecto: 'micelio', marco: false },
 
-    // 1 · BURBUJAS — del hueco oscuro de la cueva suben burbujas y gotas de luz que vienen hacia quien mira; agua y gotas
+    // 1 · TORMENTA sobre un arco de hielo con estalactitas
     //     (la mosca sigue disponible: { efecto: 'mosca' } · el vórtice doble: { efecto: 'espejo' })
-    { efecto: 'deshielo', marco: false, vista: { vista: 'plana' } },
+    { efecto: 'deshielo', marco: false },
 
     // 2 · BOSQUE — un claro circular de fustes verticales de puntos que se mecen; al acercar el teléfono sube el viento
     { efecto: 'bosque', marco: false },
 
-    // 3 · VÓRTICE — los fragmentos se desprenden y giran en espiral sobre la tarjeta, con un anillo de escarcha; tintineos de hielo
-    { efecto: 'coral', marco: false, vista: { vista: 'plana' } },
+    // 3 · TORMENTA en remolino sobre una drusa de cristales de hielo
+    { efecto: 'coral', marco: false },
 
 
-    // 4 · DESPRENDIMIENTO — el pico se quiebra: los bloques tiemblan, caen hacia quien mira y estallan en escarcha; crujidos y estruendo
+    // 4 · TORMENTA sobre el frente de un glaciar
     //     (el relieve en malla cian sigue disponible: { efecto: 'terreno' } · la esfera de espirales: { efecto: 'espiral' })
-    { efecto: 'glaciar', marco: false, vista: { vista: 'plana' } },
+    { efecto: 'glaciar', marco: false },
 
     // 5 · SINAPSIS — núcleos incandescentes unidos por arcos de polvo; los impulsos viajan de uno a otro
     { efecto: 'sinapsis', marco: false },
