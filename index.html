@@ -3418,78 +3418,6 @@
   <!-- Botón mini 🔊 -->
   <button id="audio-btn" title="Habilitar audio">🔊</button>
 
-  <script>
-// Fragmentos volumétricos: +Z es la normal de salida del target.
-AFRAME.registerComponent('hz-fractura', {
- schema:{modo:{default:0},target:{default:0},cantidad:{default:12},profundidad:{default:0.85},expansion:{default:1.5},duracion:{default:13},src:{default:''}},
- init(){
-  const T=AFRAME.THREE,d=this.data;
-  this.anchor=this.el.closest('.hz-ancla')||this.el;
-  this.root=new T.Group();this.root.visible=false;this.el.object3D.add(this.root);
-  this.t=0;this.active=false;this.fragments=[];this.resources=[];
-  this.cam=new T.Vector3();this.dir=new T.Vector3(0,0,1);
-  let seed=13579+d.target*271;const random=()=>{seed=seed*16807%2147483647;return seed/2147483647;};
-  this.asp=(HZ_DATOS.aspectos&&HZ_DATOS.aspectos[d.target])||1;
-  const material=new T.MeshStandardMaterial({color:0x71d7ef,roughness:0.24,metalness:0.3,flatShading:true});
-  const face=new T.MeshBasicMaterial({color:0xb5eeff,side:T.DoubleSide});
-  this.resources.push(material,face);
-  const source=d.src||(HZ_DATOS.miniaturas&&HZ_DATOS.miniaturas[d.target]);
-  if(source)new T.TextureLoader().load(source,tex=>{if(this.disposed){tex.dispose();return;}tex.encoding=T.sRGBEncoding;face.map=tex;face.color.set(0xffffff);face.needsUpdate=true;this.resources.push(tex);},undefined,()=>console.warn('[Hz] textura no disponible; se usa hielo procedural'));
-  const n=Math.max(5,Math.min(18,Math.round(d.cantidad))),h=this.asp/n;
-  // Triangulación irregular continua: cada cara corresponde a su recorte de la imagen.
-  const grid=[];for(let y=0;y<=n;y++){grid[y]=[];for(let x=0;x<=n;x++)grid[y][x]=new T.Vector2(x/n-.5+(x>0&&x<n?(random()-.5)*.55/n:0),y*h-this.asp/2+(y>0&&y<n?(random()-.5)*.55*h:0));}
-  const add=(verts)=>{
-   const center=new T.Vector2();verts.forEach(v=>center.add(v));center.multiplyScalar(1/3);
-   const shape=new T.Shape();verts.forEach((v,i)=>i?shape.lineTo(v.x-center.x,v.y-center.y):shape.moveTo(v.x-center.x,v.y-center.y));shape.closePath();
-   const thickness=.012+random()*.028;
-   const geo=new T.ExtrudeGeometry(shape,{depth:thickness,bevelEnabled:false,steps:1});geo.translate(0,0,-thickness);
-   const p=geo.attributes.position,uv=geo.attributes.uv;for(let i=0;i<p.count;i++)uv.setXY(i,p.getX(i)+center.x+.5,(p.getY(i)+center.y)/this.asp+.5);
-   const mesh=new T.Mesh(geo,[face,material]);mesh.position.set(center.x,center.y,.005);this.root.add(mesh);this.resources.push(geo);
-   this.fragments.push({mesh,x:center.x,y:center.y,r:random(),phase:random()*Math.PI*2,sx:(random()-.5)*3,sy:(random()-.5)*3,sz:(random()-.5)*3});
-  };
-  for(let y=0;y<n;y++)for(let x=0;x<n;x++){const a=grid[y][x],b=grid[y][x+1],c=grid[y+1][x+1],e=grid[y+1][x];if(random()>.5){add([a,b,c]);add([a,c,e]);}else{add([a,b,e]);add([b,c,e]);}}
-  const lamp=new T.PointLight(0x9beaff,2,4);lamp.position.set(-.5,.6,1.2);this.root.add(lamp,new T.AmbientLight(0x8bd0ff,.9));
-  const count=600,positions=new Float32Array(count*3);this.dust=[];for(let i=0;i<count;i++)this.dust.push({x:random()-.5,y:(random()-.5)*this.asp,z:random(),p:random()*6.28});
-  const g=new T.BufferGeometry();g.setAttribute('position',new T.BufferAttribute(positions,3));const m=new T.PointsMaterial({color:0x9ceeff,size:.005,transparent:true,opacity:0,depthWrite:false});this.points=new T.Points(g,m);this.points.frustumCulled=false;this.root.add(this.points);this.resources.push(g,m);
-  this.found=()=>{if(!this.active)this.t=0;this.active=true;this.root.visible=true;};this.lost=()=>{this.active=false;this.root.visible=false;};
-  this.anchor.addEventListener('targetFound',this.found);this.anchor.addEventListener('targetLost',this.lost);
-  this.replay=()=>{if(this.active)this.t=0;};window.addEventListener('pointerdown',this.replay);
- },
- tick(time,dt){
-  if(!this.active)return;
-  const d=this.data,T=AFRAME.THREE;this.t+=Math.min((dt||16)/1000,.05);
-  const cycle=this.t%Math.max(8,d.duracion),smooth=x=>{x=Math.max(0,Math.min(1,x));return x*x*(3-2*x);};
-  // Pausa inicial, apertura, suspensión y regreso continuo al plano.
-  const open=smooth((cycle-.7)/3),back=smooth((cycle-(d.duracion-3))/2.5),amount=open*(1-back);
-  const camera=this.el.sceneEl.camera;
-  if(camera){this.root.updateWorldMatrix(true,false);camera.getWorldPosition(this.cam);this.root.worldToLocal(this.cam);this.dir.copy(this.cam).normalize();if(this.dir.z<.12)this.dir.set(this.dir.x,this.dir.y,.12).normalize();}
-  // Nunca se acercan más del 62% de la distancia a la cámara: evita atravesar el near plane.
-  const reach=Math.min(d.profundidad,Math.max(.02,this.cam.length()*.62));
-  for(const f of this.fragments){
-   const a=amount*smooth((open-f.r*.22)/.6),r=Math.hypot(f.x,f.y),angle=Math.atan2(f.y,f.x),spin=cycle*.7;
-   let x=f.x,y=f.y,z=reach*a*(.25+.75*f.r);
-   switch(d.modo){
-    case 0:x+=f.x*a*d.expansion;y+=f.y*a*d.expansion;break;
-    case 1:x+=Math.sin(f.phase+spin)*a*.32;y+=Math.cos(f.phase+spin*.7)*a*.35;z=reach*a*(.35+.65*(.5+.5*Math.sin(spin+f.phase)));break;
-    case 2:x+=Math.sin(spin+f.phase)*a*.24;y+=a*(.15+f.r*.8);z=reach*a*(.2+.8*(1-r));break;
-    case 3:x=Math.cos(angle+spin*a)*(r+a*.28);y=Math.sin(angle+spin*a)*(r+a*.28);z=reach*a*(.3+.7*f.r);break;
-    case 4:x+=f.x*a*.9;y-=a*a*(.2+f.r*.7);z=reach*a*(.3+.7*f.r);break;
-    case 5:x+=Math.sin(f.phase+spin*1.7)*a*.38;y+=Math.cos(f.phase*.8+spin)*a*.38;z=reach*a*(.2+.8*(.5+.5*Math.sin(f.phase+spin)));break;
-    case 6:x=Math.cos(angle+spin*a*2)*r*(1-.7*a);y=Math.sin(angle+spin*a*2)*r*(1-.7*a);z=reach*a*(.2+.8*(1-Math.min(1,r*1.5)));break;
-   }
-   // Incluye desviación hacia el observador sin perder el anclaje a la página.
-   f.mesh.position.set(x+this.dir.x*z*.45,y+this.dir.y*z*.45,.005+z);
-   f.mesh.rotation.set(f.sx*a+Math.sin(cycle+f.phase)*a*.25,f.sy*a,f.sz*a);
-   f.mesh.scale.setScalar(1-a*.08);
-  }
-  const p=this.points.geometry.attributes.position;for(let i=0;i<this.dust.length;i++){const f=this.dust[i],a=amount,k=(cycle*.15+f.z)%1;p.setXYZ(i,f.x*(1+a*2)+Math.sin(f.p+cycle)*a*.08,f.y*(1+a*2),.015+k*reach*a);}
-  p.needsUpdate=true;this.points.material.opacity=amount*.55;
- },
- remove(){this.disposed=true;this.anchor.removeEventListener('targetFound',this.found);this.anchor.removeEventListener('targetLost',this.lost);window.removeEventListener('pointerdown',this.replay);this.el.object3D.remove(this.root);this.resources.forEach(r=>r.dispose());}
-});
-
-  </script>
-
   <!-- ESCENA: se arma desde HZ.escenas (hz.config.js). Cada escena es un trigger, en el mismo orden en que se compiló targets.mind.
        Con ?ver=N se abre la escena N sin cámara ni trigger (vista previa en la compu: arrastrar para girar, rueda para acercar). -->
   <script>
@@ -3612,10 +3540,6 @@ AFRAME.registerComponent('hz-fractura', {
     const HIELO={ micelio:{modo:'placas'}, deshielo:{modo:'burbujas',ax:-0.29,ay:0.10}, coral:{modo:'vortice',asp:0.947}, glaciar:{modo:'desprende',ax:0.29,ay:0.33,asp:0.75} };
     Object.keys(HIELO).forEach(n=>{ EFECTOS[n+'-nube']=EFECTOS[n];
       EFECTOS[n]=(e,i)=>({anchor:'', inner:'<a-entity hielo="'+esc(attr('hielo',e,HIELO[n]))+'"></a-entity>'}); });
-    // Nuevas escenas 3D; conservan los nombres para mantener el diseño sonoro.
-    ['micelio','deshielo','bosque','coral','glaciar','sinapsis','hoyo-negro'].forEach((name,mode)=>{
-      EFECTOS[name]=(e,i)=>({anchor:'',inner:'<a-entity hz-fractura="'+esc(attr('hz-fractura',e,{modo:mode,target:i}))+'"></a-entity>'});
-    });
     ESC.forEach((e,i)=>{
       if(!e || (preview && i!==VER)) return;
       const f=EFECTOS[e.efecto]; if(!f){ console.warn('[Hz] efecto desconocido:',e.efecto); return; }

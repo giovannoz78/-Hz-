@@ -1,4 +1,3 @@
-// Versión 3D: fragmentos triangulados con espesor. Un toque reinicia la secuencia.
 // [Hz] · realidad aumentada
 // Todo lo que cambia de un proyecto a otro está acá. El motor (index.html) no se toca.
 //
@@ -33,7 +32,7 @@ window.HZ = {
   //   umbral: desde qué brillo de la cámara empieza el calor (0.5 = más zonas calientes, 0.75 = solo luces fuertes)
   //   cercania: cuánto calienta acercar el teléfono (0 = nada, 1 = normal, 2 = mucho)
   // modo 'bn' vuelve al blanco y negro puro.
-  paleta: { modo: 'natural', camara: false },
+  paleta:  { modo: 'glow', mapa: 'termico', halo: 1.0, contraste: 1.0, camaraTermica: false, umbral: 0.62, cercania: 1.0, camara: false },
 
   // sonido: cada escena tiene su capa sintetizada en el teléfono; arranca con el primer toque en pantalla (o el botón 🔊).
   // false lo apaga. volumen: 0 a 1.
@@ -45,13 +44,39 @@ window.HZ = {
   colores: { tinta: '#FFFFFF', fondo: '#000000', puntos: '#FFFFFF' },   // textos y puntitos de la pantalla de carga
 
   escenas: [
-    { efecto: 'micelio', marco: false, vista: { vista: 'plana' }, opciones: { 'hz-fractura': { cantidad: 10, profundidad: 0.85, expansion: 1.5, duracion: 13 } } },
-    { efecto: 'deshielo', marco: false, vista: { vista: 'plana' }, opciones: { 'hz-fractura': { cantidad: 10, profundidad: 0.85, expansion: 1.5, duracion: 13 } } },
-    { efecto: 'bosque', marco: false, vista: { vista: 'plana' }, opciones: { 'hz-fractura': { cantidad: 10, profundidad: 0.85, expansion: 1.5, duracion: 13 } } },
-    { efecto: 'coral', marco: false, vista: { vista: 'plana' }, opciones: { 'hz-fractura': { cantidad: 10, profundidad: 0.85, expansion: 1.5, duracion: 13 } } },
-    { efecto: 'glaciar', marco: false, vista: { vista: 'plana' }, opciones: { 'hz-fractura': { cantidad: 10, profundidad: 0.85, expansion: 1.5, duracion: 13 } } },
-    { efecto: 'sinapsis', marco: false, vista: { vista: 'plana' }, opciones: { 'hz-fractura': { cantidad: 10, profundidad: 0.85, expansion: 1.5, duracion: 13 } } },
-    { efecto: 'hoyo-negro', marco: false, vista: { vista: 'plana' }, opciones: { 'hz-fractura': { cantidad: 10, profundidad: 0.85, expansion: 1.5, duracion: 13 } } }
+
+    // Las siete escenas son nubes de puntos con su propio color (assets/*.bin). Cada una llega como polvo y se arma de pie
+    // sobre la tarjeta; al acercar mucho el teléfono se desarma en polvo que gira y al alejarlo se vuelve a condensar.
+    // Ajustes comunes por escena: opciones: { 'nube': { tamano: 1, punto: 0.0035, brillo: 1.15, arma: 4.5, dispersa: 1 } }
+    //   tamano: escala de la nube · punto: tamaño de cada punto · arma: segundos que tarda en armarse · dispersa: 0 = no se desarma
+    //   ola / olaVel: pulsos de luz que la recorren · viento: cuánto se mece · giro: velocidad de giro
+    // Los efectos anteriores siguen disponibles con -lineas: { efecto: 'micelio-lineas' }
+
+    // 0 · PLACAS — el hielo se quiebra: lajas de luz cian se despegan de la imagen, se levantan girando hacia quien mira y vuelven a asentarse;
+    //     suena a lago congelado que canta  (la nube anterior: { efecto: 'micelio-nube' } · las hifas: { efecto: 'micelio-lineas' })
+    { efecto: 'micelio', marco: false, vista: { vista: 'plana' } },
+
+    // 1 · BURBUJAS — del hueco oscuro de la cueva suben burbujas y gotas de luz que vienen hacia quien mira; agua y gotas
+    //     (la mosca sigue disponible: { efecto: 'mosca' } · el vórtice doble: { efecto: 'espejo' })
+    { efecto: 'deshielo', marco: false, vista: { vista: 'plana' } },
+
+    // 2 · BOSQUE — un claro circular de fustes verticales de puntos que se mecen; al acercar el teléfono sube el viento
+    { efecto: 'bosque', marco: false },
+
+    // 3 · VÓRTICE — los fragmentos se desprenden y giran en espiral sobre la tarjeta, con un anillo de escarcha; tintineos de hielo
+    { efecto: 'coral', marco: false, vista: { vista: 'plana' } },
+
+
+    // 4 · DESPRENDIMIENTO — el pico se quiebra: los bloques tiemblan, caen hacia quien mira y estallan en escarcha; crujidos y estruendo
+    //     (el relieve en malla cian sigue disponible: { efecto: 'terreno' } · la esfera de espirales: { efecto: 'espiral' })
+    { efecto: 'glaciar', marco: false, vista: { vista: 'plana' } },
+
+    // 5 · SINAPSIS — núcleos incandescentes unidos por arcos de polvo; los impulsos viajan de uno a otro
+    { efecto: 'sinapsis', marco: false },
+
+    // 6 · AGUJERO NEGRO — disco de acreción que gira más rápido cerca del centro, anillo de fotones y estrellas
+    { efecto: 'hoyo-negro', marco: false }
+
   ]
 };
 
