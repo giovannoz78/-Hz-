@@ -1,0 +1,8 @@
+Reemplazá index.html y hz.config.js en la carpeta de tu proyecto. Conservá hz-datos.js, mindar/targets.mind y el resto de archivos actuales. No hace falta recompilar los triggers.
+
+7 escenas: fractura expansiva, levitación, ascenso, vórtice, desprendimiento, suspensión turbulenta y absorción.
+Un toque en pantalla reinicia el efecto. Se repite cada 13 segundos.
+Vista previa: index.html?ver=0 hasta ?ver=6, desde un servidor web.
+La textura se toma de HZ_DATOS.miniaturas: si falta, se utiliza material cian. Para mayor detalle, cada escena admite src dentro de opciones/hz-fractura con la ruta a su trigger original.
+Los fragmentos se anclan a la imagen. MindAR no incluye mapeo del espacio ni oclusión por objetos reales: al perder el trigger, se ocultan.
+Validado: sintaxis JavaScript y simulación de los siete componentes. Falta verificar cámara y tracking en el teléfono.
