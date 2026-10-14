@@ -14,10 +14,10 @@ window.HZ = {
   subtitulo: '',
   frase:     '',
   guia:      'Apuntá la cámara a la imagen',
-  guia2:     'Movete alrededor de la imagen:\ncada escena tiene volumen.',
+  guia2:     '',
 
   // texto en pantalla mientras se ve una tarjeta ('' = sin texto)
-  aviso:     'Movete alrededor de la imagen',
+  aviso:     '',
 
   // archivo de triggers que genera preparar.html
   mind: './mindar/targets.mind',
@@ -52,24 +52,24 @@ window.HZ = {
     //   ola / olaVel: pulsos de luz que la recorren · viento: cuánto se mece · giro: velocidad de giro
     // Los efectos anteriores siguen disponibles con -lineas: { efecto: 'micelio-lineas' }
 
-    // 0 · PLACAS DE HIELO — la imagen del trigger (placas agrietadas) se levanta como relieve de cristal en nube de puntos cian;
-    //     suena a lago congelado que canta (silbidos que caen) y hielo que se tensa  (las hifas siguen disponibles: { efecto: 'micelio-lineas' })
-    { efecto: 'micelio', marco: false },
+    // 0 · PLACAS — el hielo se quiebra: lajas de luz cian se despegan de la imagen, se levantan girando hacia quien mira y vuelven a asentarse;
+    //     suena a lago congelado que canta  (la nube anterior: { efecto: 'micelio-nube' } · las hifas: { efecto: 'micelio-lineas' })
+    { efecto: 'micelio', marco: false, vista: { vista: 'plana' } },
 
-    // 1 · DESHIELO — la cueva de hielo con burbujas del trigger, en relieve de cristal cian; suena a hilo de agua y gotas
+    // 1 · BURBUJAS — del hueco oscuro de la cueva suben burbujas y gotas de luz que vienen hacia quien mira; agua y gotas
     //     (la mosca sigue disponible: { efecto: 'mosca' } · el vórtice doble: { efecto: 'espejo' })
-    { efecto: 'deshielo', marco: false },
+    { efecto: 'deshielo', marco: false, vista: { vista: 'plana' } },
 
     // 2 · BOSQUE — un claro circular de fustes verticales de puntos que se mecen; al acercar el teléfono sube el viento
     { efecto: 'bosque', marco: false },
 
-    // 3 · CRISTALES — los fragmentos en espiral del trigger, en relieve de cristal cian; tintineos de hielo y escarcha al desarmarse
-    { efecto: 'coral', marco: false },
+    // 3 · VÓRTICE — los fragmentos se desprenden y giran en espiral sobre la tarjeta, con un anillo de escarcha; tintineos de hielo
+    { efecto: 'coral', marco: false, vista: { vista: 'plana' } },
 
 
-    // 4 · GLACIAR — la montaña de hielo del trigger, en relieve de cristal cian; cruje y cada tanto se desprende un bloque
+    // 4 · DESPRENDIMIENTO — el pico se quiebra: los bloques tiemblan, caen hacia quien mira y estallan en escarcha; crujidos y estruendo
     //     (el relieve en malla cian sigue disponible: { efecto: 'terreno' } · la esfera de espirales: { efecto: 'espiral' })
-    { efecto: 'glaciar', marco: false },
+    { efecto: 'glaciar', marco: false, vista: { vista: 'plana' } },
 
     // 5 · SINAPSIS — núcleos incandescentes unidos por arcos de polvo; los impulsos viajan de uno a otro
     { efecto: 'sinapsis', marco: false },

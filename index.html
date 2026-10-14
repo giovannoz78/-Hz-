@@ -2398,6 +2398,112 @@
     }
   });
   </script>
+  <!-- HIELO: fenómenos de hielo que salen de la imagen hacia quien mira (no la copian). Puntos cian que brillan (suma de luz),
+       siempre enteros. modo: placas (las lajas se quiebran y se levantan), burbujas (suben desde el hueco de la cueva),
+       vortice (los fragmentos se desprenden y giran sobre la tarjeta), desprende (el pico se quiebra, los bloques caen y estallan en escarcha). -->
+  <script>
+  AFRAME.registerComponent('hielo',{
+    schema:{ modo:{default:'placas'}, ax:{default:0}, ay:{default:0}, punto:{default:0.0045}, brillo:{default:0.5}, velocidad:{default:1.0}, asp:{default:0.667} },
+    init(){
+      const T=AFRAME.THREE,d=this.data;
+      this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
+      let sd=1234567; const rnd=()=>{ sd=(sd*48271)%2147483647; return sd/2147483647; };
+      const P=[],C=[],K=[],B=[];
+      const add=(o,c,k,b)=>{ P.push(o[0],o[1],o[2]); C.push(c[0],c[1],c[2]); K.push(k[0],k[1],k[2],k[3]); B.push(b); };
+      const A=d.asp, Wd=1.0;
+      // una laja/fragmento: polígono irregular relleno de puntos, filos más densos y brillantes
+      const laja=(cx,cy,cz,R,n,k,grosor)=>{ const lados=3+Math.floor(rnd()*3), vs=[];
+        for(let i=0;i<lados;i++){ const a=i/lados*6.283+rnd()*0.8; const r=R*(0.55+0.45*rnd()); vs.push([Math.cos(a)*r,Math.sin(a)*r]); }
+        for(let i=0;i<n;i++){ const e=Math.floor(rnd()*lados), v0=vs[e], v1=vs[(e+1)%lados]; let u=rnd(), w=rnd(); if(u+w>1){u=1-u;w=1-w;}
+          const filo=rnd()<0.5; if(filo){ w=1-u; }
+          const x=v0[0]*u+v1[0]*w, y=v0[1]*u+v1[1]*w, z=(rnd()-0.5)*grosor;
+          add([x,y,z],[cx,cy,cz],k,filo?1.0:0.35+0.3*rnd()); } };
+      const M=d.modo;
+      if(M==='placas'){
+        for(let s=0;s<28;s++){ const cx=(rnd()-0.5)*Wd*0.9, cy=(rnd()-0.5)*A*0.9; laja(cx,cy,0,0.07+0.08*rnd(),1100,[rnd(),0.6+0.5*rnd(),rnd(),0],0.01); }
+        for(let i=0;i<9000;i++) add([0,0,0],[(rnd()-0.5)*Wd,(rnd()-0.5)*A,0],[rnd(),0.3+rnd(),rnd(),2],0.6*rnd());   // escarcha suspendida
+      } else if(M==='burbujas'){
+        for(let s=0;s<34;s++){ const r=0.018+0.055*Math.pow(rnd(),1.4); const n=Math.floor(90+r*2600);
+          const k=[rnd(),0.5+0.6*rnd(),rnd(),0], cx=d.ax+(rnd()-0.5)*0.26, cy=d.ay+(rnd()-0.5)*0.2;
+          for(let i=0;i<n;i++){ const a=rnd()*6.283, brillo=Math.cos(a-2.3); const rr=r*(1+(rnd()-0.5)*0.06);   // anillo de la burbuja, con un reflejo arriba a la izquierda
+            add([Math.cos(a)*rr,Math.sin(a)*rr,0],[cx,cy,0],k,0.45+0.55*Math.max(0,brillo)); }
+          for(let i=0;i<Math.floor(n*0.15);i++){ const a=2.3+(rnd()-0.5)*0.9, rr=r*0.62; add([Math.cos(a)*rr,Math.sin(a)*rr,0],[cx,cy,0],k,1.0); } }
+        for(let i=0;i<2500;i++) add([0,0,0],[d.ax+(rnd()-0.5)*0.35,d.ay+(rnd()-0.5)*0.25,0],[rnd(),0.4+rnd(),rnd(),2],0.3+0.5*rnd());
+      } else if(M==='vortice'){
+        for(let s=0;s<60;s++) laja(0,0,0,0.025+0.06*rnd(),700,[rnd(),0.5+0.7*rnd(),rnd(),0],0.012);
+        for(let i=0;i<16000;i++) add([0,0,0],[0,0,0],[rnd(),0.6+rnd(),rnd(),2],0.3+0.6*rnd());
+      } else { // desprende
+        for(let s=0;s<34;s++) laja(0,0,0,0.03+0.06*rnd(),800,[rnd(),0.8+0.5*rnd(),rnd(),0],0.04);
+        for(let i=0;i<14000;i++) add([0,0,0],[d.ax+(rnd()-0.5)*0.5,d.ay-0.1-rnd()*0.4,0],[rnd(),0.3+0.6*rnd(),rnd(),2],0.3+0.6*rnd());
+      }
+      const g=new T.BufferGeometry();
+      g.setAttribute('position',new T.Float32BufferAttribute(P,3)); g.setAttribute('aC',new T.Float32BufferAttribute(C,3));
+      g.setAttribute('aK',new T.Float32BufferAttribute(K,4)); g.setAttribute('aB',new T.Float32BufferAttribute(B,1));
+      const modo={placas:0,burbujas:1,vortice:2,desprende:3}[M]||0;
+      this.u={uTime:{value:0},uFade:{value:0},uPunto:{value:d.punto},uBrillo:{value:d.brillo},uViewH:{value:800},uCerca:{value:0.5},uA:{value:new T.Vector2(d.ax,d.ay)},uAsp:{value:A}};
+      this.mesh=new T.Points(g,new T.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:false,depthTest:false,blending:T.AdditiveBlending,
+        vertexShader:`attribute vec3 aC; attribute vec4 aK; attribute float aB;
+          uniform float uTime,uFade,uPunto,uBrillo,uViewH,uCerca,uAsp; uniform vec2 uA; varying vec3 vC; varying float vA;
+          mat3 rot(vec3 ax,float a){ ax=normalize(ax); float s=sin(a),c=cos(a),oc=1.0-c;
+            return mat3(oc*ax.x*ax.x+c,oc*ax.x*ax.y+ax.z*s,oc*ax.z*ax.x-ax.y*s, oc*ax.x*ax.y-ax.z*s,oc*ax.y*ax.y+c,oc*ax.y*ax.z+ax.x*s, oc*ax.z*ax.x+ax.y*s,oc*ax.y*ax.z-ax.x*s,oc*ax.z*ax.z+c); }
+          float h1(float x){ return fract(sin(x*127.1)*43758.5453); }
+          void main(){
+            float ph=aK.x, sp=aK.y, sa=aK.z, kind=aK.w; vec3 p; float vis=1.0, luz=aB;
+            vec3 eje=vec3(h1(ph)-0.5,h1(ph+3.1)-0.5,h1(ph+7.7)-0.5)+vec3(0.0,0.0,0.001);
+            float t=uTime*sp*0.12+ph;
+            #if MODO==0
+              if(kind<1.0){ float c=fract(t); float lev=smoothstep(0.05,0.35,c)*(1.0-smoothstep(0.72,0.98,c));
+                float alto=(0.10+0.32*sa)*(1.0+uCerca*0.6);
+                vec3 o=rot(eje,lev*(1.2+2.0*sa))*position;
+                p=aC+vec3(aC.xy*lev*0.25,lev*alto)+o; luz*=0.55+0.9*lev; }
+              else { float c=fract(t*0.6); p=aC+vec3(sin(uTime*0.3+ph*40.0)*0.01,cos(uTime*0.25+ph*30.0)*0.01,0.02+c*0.35); vis=sin(3.1416*c); }
+            #elif MODO==1
+              if(kind<1.0){ float c=fract(t*0.7); float e=0.35+0.65*smoothstep(0.0,0.3,c);
+                p=aC+position*e+vec3(sin(c*7.0+ph*20.0)*0.05,c*0.16,c*0.42); vis=smoothstep(0.0,0.08,c)*(1.0-smoothstep(0.8,1.0,c)); }
+              else { float c=fract(t*1.4); p=aC+vec3(sin(c*14.0+ph*50.0)*0.01,c*0.12,c*0.3); vis=sin(3.1416*c)*0.6; }
+            #elif MODO==2
+              { float r=0.08+0.42*sa; float c=fract(t*0.35);
+                float ang=ph*6.283+uTime*(0.35+0.25*sp)/(0.4+r);
+                float z=(kind<1.0)? 0.04+0.30*(0.5+0.5*sin(uTime*0.4*sp+ph*9.0)) : 0.02+0.45*c;
+                vec3 o=(kind<1.0)? rot(eje,uTime*(0.6+sa))*position : vec3(0.0);
+                if(kind>1.0){ r=r*0.9+0.03*sin(uTime+ph*30.0); vis=sin(3.1416*c); }
+                p=vec3(cos(ang)*r,sin(ang)*r*uAsp*1.05,z)+o; }
+            #else
+              if(kind<1.0){ float c=fract(t*0.55); vec3 pico=vec3(uA,0.0)+vec3((h1(ph+1.0)-0.5)*0.12,(h1(ph+2.0)-0.5)*0.08,0.0);
+                float caida=smoothstep(0.12,0.62,c); float tc=max(0.0,c-0.12);
+                vec3 vel=vec3((h1(ph+4.0)-0.5)*0.5,-0.15,0.55+0.4*sa);
+                p=pico+vel*tc*1.6+vec3(0.0,-1.4*tc*tc,0.0);
+                float tiembla=(1.0-step(0.12,c))*0.004*sin(uTime*60.0+ph*10.0);
+                float est=smoothstep(0.62,0.8,c);
+                vec3 o=rot(eje,caida*(3.0+3.0*sa))*position*(1.0+est*6.0*(0.5+aB));
+                p+=o+vec3(tiembla); vis=1.0-smoothstep(0.75,1.0,c); luz*=1.0+est*0.8; }
+              else { float c=fract(t*0.5); p=aC+vec3(sin(uTime*0.5+ph*20.0)*0.03,-c*0.08,0.03+c*0.4); vis=sin(3.1416*c)*0.7; }
+            #endif
+            vec3 hondo=vec3(0.0,0.42,0.75), cian=vec3(0.15,0.85,1.0), hielo=vec3(0.85,1.0,1.0);
+            luz=clamp(luz,0.0,1.0); vC=(luz<0.6? mix(hondo,cian,luz/0.6) : mix(cian,hielo,(luz-0.6)/0.4))*uBrillo; vA=vis*uFade;
+            vec4 mv=modelViewMatrix*vec4(p,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
+            float tam=(kind<1.0)? uPunto*(0.7+0.6*aB) : uPunto*0.75;
+            gl_PointSize=clamp(tam*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),2.0,28.0);
+            gl_Position=projectionMatrix*mv; }`.replace('#if MODO','#define MODO '+modo+'\n            #if MODO'),
+        fragmentShader:`precision mediump float; varying vec3 vC; varying float vA;
+          void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25) discard; float k=exp(-e*9.0); gl_FragColor=vec4(vC*k*vA,1.0); }`}));
+      this.mesh.frustumCulled=false; this.mesh.visible=false; this.mesh.renderOrder=10;
+      const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.mesh.layers.set(2); window.hzCapa2=true; }
+      this.el.object3D.add(this.mesh); this.t=0; this.running=false; this._ev=0;
+      this.anchor.addEventListener('targetFound',()=>{ clearTimeout(this._lost); this.running=true; this.mesh.visible=true; });
+      this.anchor.addEventListener('targetLost',()=>{ clearTimeout(this._lost); this._lost=setTimeout(()=>{ this.running=false; this.mesh.visible=false; this.t=0; },1500); });
+    },
+    tick(t,dt){
+      if(!this.running){ if(this.anchor.object3D.visible&&this.anchor.components&&this.anchor.components['mindar-image-target']){ this.running=true; this.mesh.visible=true; } else return; }
+      const st=Math.min(0.05,(dt||16)/1000); this.t+=st*this.data.velocidad;
+      this.u.uTime.value=this.t; this.u.uFade.value=Math.min(1,this.t/1.5);
+      let k=+window.hzCalor; if(!isFinite(k)) k=0.5; this.u.uCerca.value+=(k-this.u.uCerca.value)*Math.min(1,st*2);
+      const r=this.el.sceneEl.renderer; if(r) this.u.uViewH.value=r.getContext().drawingBufferHeight;
+      // eventos de sonido: cada tanto se quiebra / se desprende algo
+      this._ev-=st; if(this._ev<=0){ this._ev=1.2+Math.random()*2.5; const ef=this.anchor.dataset&&this.anchor.dataset.efecto; window.HZS&&HZS.ev(ef); }
+    }
+  });
+  </script>
   <!-- BOSQUE EN NUBE DE PUNTOS: árboles generados por ramificación, como un escaneo LiDAR; el bosque crece
        desde la página, se mece con el viento y lo recorre una línea de escaneo. -->
   <script>
@@ -3416,19 +3522,23 @@
       micelio:     {src:'./assets/hielo-placas.bin',  punto:0.0032, base:0.75, ola:0.5, olaVel:0.12, olaLargo:1.2, brillo:1.2},
       mosca:       {src:'./assets/mosca.bin',      tamano:1.1, punto:0.0036, ola:0.25, olaVel:0.12, olaLargo:1.0, brillo:1.2},
       espejo:      {src:'./assets/espejo.bin',     punto:0.0028, giro:0.35, giroK:1.0, ola:0.7, olaVel:0.25, olaLargo:1.5},
-      bosque:      {src:'./assets/bosque.bin',     punto:0.0026, viento:0.8, ola:0.6, olaVel:0.15, olaLargo:1.0},
+      bosque:      {src:'./assets/bosque.bin',     base:1, punto:0.0034, viento:0.8, ola:0.6, olaVel:0.15, olaLargo:1.0},
       coral:       {src:'./assets/hielo-espiral.bin', punto:0.0032, base:0.75, ola:0.4, olaVel:0.1, olaLargo:1.0, brillo:1.2},
       glaciar:     {src:'./assets/hielo-montana.bin', punto:0.0032, base:0.75, ola:0.35, olaVel:0.07, olaLargo:1.0, brillo:1.2},
       deshielo:    {src:'./assets/hielo-cueva.bin',   punto:0.0032, base:0.75, ola:0.6, olaVel:0.12, olaLargo:1.6, brillo:1.2},
       espiral:     {src:'./assets/espiral.bin',    tamano:1.45, punto:0.003, giro:0.3, ola:0.6, olaVel:0.22, olaLargo:2.0},
-      sinapsis:    {src:'./assets/sinapsis.bin',   tamano:1.3, punto:0.003, ola:1.4, olaVel:0.45, olaLargo:1.0},
-      'hoyo-negro':{src:'./assets/hoyo-negro.bin', base:0.62, punto:0.0032, giro:0.9, giroK:1.5, giroS:1, brillo:1.25}
+      sinapsis:    {src:'./assets/sinapsis.bin',   base:1, tamano:1.3, punto:0.0038, ola:1.4, olaVel:0.45, olaLargo:1.0},
+      'hoyo-negro':{src:'./assets/hoyo-negro.bin', base:1, punto:0.004, giro:0.9, giroK:1.5, giroS:1, brillo:1.25}
     };
     // terreno · relieve en malla de alambre cian
     EFECTOS.terreno=(e,i)=>({anchor:'', inner:'<a-entity terreno="'+esc(attr('terreno',e))+'"></a-entity>'});
     Object.keys(NUBES).forEach(n=>{ if(EFECTOS[n]) EFECTOS[n+'-lineas']=EFECTOS[n];
       EFECTOS[n]=(e,i)=>({anchor:'', inner:marco(e,i,0.5)+'<a-entity nube="'+esc(attr('nube',Object.assign({},e,{opciones:Object.assign({},e.opciones,{nube:Object.assign({},(e.opciones||{})[n]||{},(e.opciones||{}).nube||{})})}),NUBES[n]))+'"></a-entity>'}); });
 
+    // HIELO: las escenas 0, 1, 3 y 4 son fenómenos de hielo que salen de la imagen (las nubes anteriores siguen con el sufijo -nube)
+    const HIELO={ micelio:{modo:'placas'}, deshielo:{modo:'burbujas',ax:-0.29,ay:0.10}, coral:{modo:'vortice',asp:0.947}, glaciar:{modo:'desprende',ax:0.29,ay:0.33,asp:0.75} };
+    Object.keys(HIELO).forEach(n=>{ EFECTOS[n+'-nube']=EFECTOS[n];
+      EFECTOS[n]=(e,i)=>({anchor:'', inner:'<a-entity hielo="'+esc(attr('hielo',e,HIELO[n]))+'"></a-entity>'}); });
     ESC.forEach((e,i)=>{
       if(!e || (preview && i!==VER)) return;
       const f=EFECTOS[e.efecto]; if(!f){ console.warn('[Hz] efecto desconocido:',e.efecto); return; }
@@ -3671,6 +3781,10 @@
       S.ev=(ef,x)=>{ if(!S.ctx||!S.on[ef]) return;
         if(ef==='micelio') golpe(62,0.9,0.5,'sine',38);                                                 // pulso de nutriente: latido grave
         else if(ef==='sinapsis'){ chasquido(5200,0.02,0.4); golpe(220*Math.pow(2,PENTA[(x||0)%PENTA.length]/12),0.35,0.18,'sine',null,true); }   // disparo
+        else if(ef==='micelio'){ const f=2200+Math.random()*3000; golpe(f,0.5,0.08,'sine',f/9,true); chasquido(4200,0.012,0.12); }   // la laja se quiebra: el hielo canta
+        else if(ef==='glaciar'){ golpe(36+Math.random()*10,2.4,0.4,'sine',22); chasquido(1200,0.15,0.35); setTimeout(()=>chasquido(5200,0.4,0.12),300); }   // se desprende un bloque y estalla en escarcha
+        else if(ef==='deshielo'){ const f=700+Math.random()*900; golpe(f,0.18,0.07,'sine',f*2.2,true); }   // burbuja que sube
+        else if(ef==='coral'){ const f=1318*Math.pow(2,[0,3,7,10,12][Math.floor(Math.random()*5)]/12); golpe(f,1.4,0.05,'sine',null,true); }   // fragmento que roza
         else if(ef==='bosque'){ golpe(1760,0.6,0.08,'sine',1700,true); golpe(2640,0.4,0.04,'sine',null,true); }   // pasada del escaneo
         else if(ef==='mercurio') golpe(900+Math.random()*700,0.45,0.25,'sine',380,true);                  // dos gotas se funden
         else if(ef==='espejo'){ const f=440*Math.pow(2,PENTA[Math.floor(Math.random()*8)]/12); golpe(f,1.6,0.2,'sine',null,true); golpe(f*1.5,1.2,0.08,'sine',null,true); }  // nodo nuevo
