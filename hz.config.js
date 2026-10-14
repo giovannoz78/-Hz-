@@ -52,23 +52,22 @@ window.HZ = {
     //   ola / olaVel: pulsos de luz que la recorren · viento: cuánto se mece · giro: velocidad de giro
     // Los efectos anteriores siguen disponibles con -lineas: { efecto: 'micelio-lineas' }
 
-    // 0 · MICELIO — trama circular de hifas finísimas sobre la página; pulsos de luz que salen de los centros
+    // 0 · PLACAS DE HIELO — la imagen del trigger (placas agrietadas) se levanta como relieve de cristal en nube de puntos cian;
+    //     suena a lago congelado que canta (silbidos que caen) y hielo que se tensa  (las hifas siguen disponibles: { efecto: 'micelio-lineas' })
     { efecto: 'micelio', marco: false },
 
-    // 1 · DESHIELO — canal de agua de deshielo tallado en el hielo, en nube de puntos (180 mil puntos con el color de la foto);
-    //     el agua corre hundida entre las dos laderas y la recorren pulsos de luz; suena a hilo de agua y gotas
+    // 1 · DESHIELO — la cueva de hielo con burbujas del trigger, en relieve de cristal cian; suena a hilo de agua y gotas
     //     (la mosca sigue disponible: { efecto: 'mosca' } · el vórtice doble: { efecto: 'espejo' })
     { efecto: 'deshielo', marco: false },
 
     // 2 · BOSQUE — un claro circular de fustes verticales de puntos que se mecen; al acercar el teléfono sube el viento
     { efecto: 'bosque', marco: false },
 
-    // 3 · CORAL — escaneo real de un coral (160 mil puntos con su color)
+    // 3 · CRISTALES — los fragmentos en espiral del trigger, en relieve de cristal cian; tintineos de hielo y escarcha al desarmarse
     { efecto: 'coral', marco: false },
 
 
-    // 4 · GLACIAR — frente de hielo en nube de puntos (190 mil puntos con el color de la foto: blancos, celestes y azul profundo
-    //     en las grietas) parado sobre el agua con témpanos; cruje y cada tanto se desprende un bloque
+    // 4 · GLACIAR — la montaña de hielo del trigger, en relieve de cristal cian; cruje y cada tanto se desprende un bloque
     //     (el relieve en malla cian sigue disponible: { efecto: 'terreno' } · la esfera de espirales: { efecto: 'espiral' })
     { efecto: 'glaciar', marco: false },
 

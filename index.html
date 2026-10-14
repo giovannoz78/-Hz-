@@ -2367,7 +2367,7 @@
               q+=w2*0.0025;                                                        // respiración leve aun en orden
               vec3 base=pow(aCol.rgb,vec3(0.85))*uBrillo; vC=base*(1.0-dd*0.45)+frente*(base*0.9+0.12)+ola*vec3(1.0,0.95,0.85);
               vec4 mv=modelViewMatrix*vec4(q,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
-              gl_PointSize=clamp(uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,10.0);
+              gl_PointSize=clamp(uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,22.0);
               gl_Position=projectionMatrix*mv; }`,
           fragmentShader:`precision mediump float; varying vec3 vC; void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25) discard; gl_FragColor=vec4(vC*(1.0-e*1.2),1.0); }`}));
         this.pts.frustumCulled=false; this.pts.visible=this.running;
@@ -3413,13 +3413,13 @@
     // NUBES DE PUNTOS: las siete escenas son nubes con su color, cada una con su movimiento.
     // Los efectos anteriores (líneas y shaders) siguen disponibles con el sufijo -lineas, por ejemplo { efecto: 'micelio-lineas' }.
     const NUBES={
-      micelio:     {src:'./assets/micelio.bin',    tamano:1.3, punto:0.0028, ola:0.9, olaVel:0.18, olaLargo:1.4},
+      micelio:     {src:'./assets/hielo-placas.bin',  punto:0.0032, base:0.75, ola:0.5, olaVel:0.12, olaLargo:1.2, brillo:1.2},
       mosca:       {src:'./assets/mosca.bin',      tamano:1.1, punto:0.0036, ola:0.25, olaVel:0.12, olaLargo:1.0, brillo:1.2},
       espejo:      {src:'./assets/espejo.bin',     punto:0.0028, giro:0.35, giroK:1.0, ola:0.7, olaVel:0.25, olaLargo:1.5},
       bosque:      {src:'./assets/bosque.bin',     punto:0.0026, viento:0.8, ola:0.6, olaVel:0.15, olaLargo:1.0},
-      coral:       {src:'./assets/coral.bin',      punto:0.0045, tamano:1.15},
-      glaciar:     {src:'./assets/glaciar.bin',    punto:0.0038, ola:0.35, olaVel:0.07, olaLargo:1.0, brillo:1.1},
-      deshielo:    {src:'./assets/deshielo.bin',   punto:0.0042, ola:0.6, olaVel:0.12, olaLargo:1.6, brillo:1.1},
+      coral:       {src:'./assets/hielo-espiral.bin', punto:0.0032, base:0.75, ola:0.4, olaVel:0.1, olaLargo:1.0, brillo:1.2},
+      glaciar:     {src:'./assets/hielo-montana.bin', punto:0.0032, base:0.75, ola:0.35, olaVel:0.07, olaLargo:1.0, brillo:1.2},
+      deshielo:    {src:'./assets/hielo-cueva.bin',   punto:0.0032, base:0.75, ola:0.6, olaVel:0.12, olaLargo:1.6, brillo:1.2},
       espiral:     {src:'./assets/espiral.bin',    tamano:1.45, punto:0.003, giro:0.3, ola:0.6, olaVel:0.22, olaLargo:2.0},
       sinapsis:    {src:'./assets/sinapsis.bin',   tamano:1.3, punto:0.003, ola:1.4, olaVel:0.45, olaLargo:1.0},
       'hoyo-negro':{src:'./assets/hoyo-negro.bin', base:0.62, punto:0.0032, giro:0.9, giroK:1.5, giroS:1, brillo:1.25}
@@ -3594,9 +3594,14 @@
       const PENTA=[0,3,5,7,10,12,15,17,19,22];
       // capas continuas de cada escena: devuelven una función que las apaga
       const DRONES={
-        micelio:()=>{ const n=ruido(null,0.05,'bandpass',2800,3); let vivo=true;
-          const crep=()=>{ if(!vivo) return; chasquido(1800+Math.random()*3500,0.015+Math.random()*0.03,0.25*Math.random()); setTimeout(crep,40+Math.random()*220*(1.3-(window.hzCalor||0.5))); }; crep();
-          return ()=>{ vivo=false; n.s.stop(); }; },
+        micelio:()=>{ // placas de hielo sobre un lago: el hielo "canta" con silbidos que caen de agudo a grave, y un gruñido lejano del hielo que se tensa
+          const c=S.ctx, grave=ruido(null,0.0,'lowpass',90,3), aire=ruido(null,0.02,'bandpass',600,0.5);
+          let vivo=true; const canta=()=>{ if(!vivo) return; let k=+window.hzCalor; if(!isFinite(k)) k=0.5;
+            const f=1800+Math.random()*3500; golpe(f,0.35+Math.random()*0.5,0.035+0.07*k,'sine',f/(6+Math.random()*8),Math.random()<0.6);
+            if(Math.random()<0.3) chasquido(3000+Math.random()*3000,0.01,0.08+0.15*k);
+            setTimeout(canta,250+Math.random()*(2200-1400*k)); }; canta();
+          const upd=()=>{ if(!vivo) return; const t=c.currentTime; grave.a.gain.setTargetAtTime(Math.random()<0.08?0.35:0.04,t,0.6); setTimeout(upd,700); }; upd();
+          return ()=>{ vivo=false; grave.s.stop(); aire.s.stop(); }; },
         espejo:()=>{ const c=S.ctx,pl=c.createStereoPanner?c.createStereoPanner():null,pr=c.createStereoPanner?c.createStereoPanner():null; if(pl){ pl.pan.value=-0.6; pr.pan.value=0.6; pl.connect(S.lp); pr.connect(S.lp); }
           const a=osc('sine',220,0.08,pl||S.lp), b=osc('sine',330,0.06,pr||S.lp), lfo=osc('sine',0.15,0.03,null); lfo.a.disconnect(); lfo.a.connect(a.a.gain);
           return ()=>{ [a,b,lfo].forEach(x=>x.o.stop()); }; },
@@ -3648,15 +3653,15 @@
             const g=0.012+0.05*k*k+0.04*d; z.a.gain.setTargetAtTime(g,t,0.2); z2.a.gain.setTargetAtTime(g,t,0.2); tr.a.gain.setTargetAtTime(g*0.8,t,0.2);
             f.frequency.setTargetAtTime(450+900*k+1200*d,t,0.3); setTimeout(upd,100); }; upd();
           return ()=>{ vivo=false; [z,z2,tr].forEach(x=>x.o.stop()); }; },
-        coral:()=>{ // fondo marino: un grave que respira; al desarmarse el coral, burbujas y grano que se abren
-          const c=S.ctx, sub=osc('sine',49,0.0,null), sub2=osc('sine',73.5,0.0,null), mar=ruido(null,0.0,'lowpass',320,0.9), polvo=ruido(null,0.0,'bandpass',3200,2.5);
-          let vivo=true; const burb=()=>{ if(!vivo) return; const k=+window.hzCoralDis||0; if(Math.random()<0.25+0.75*k){ const f=300+Math.random()*900*(0.5+k); golpe(f,0.07+Math.random()*0.12,0.025+0.07*k,'sine',f*(1.8+Math.random()),Math.random()<0.4); }
-            setTimeout(burb,60+(1-k)*500*Math.random()+40); }; burb();
-          const upd=()=>{ if(!vivo) return; const k=+window.hzCoralDis||0, t=c.currentTime, br=0.5+0.5*Math.sin(t*0.4);
-            sub.a.gain.setTargetAtTime(0.10*(1-k*0.5)*(0.7+0.3*br),t,0.4); sub2.a.gain.setTargetAtTime(0.05*(1-k*0.6),t,0.4);
-            mar.a.gain.setTargetAtTime(0.10+0.06*br,t,0.5); mar.f.frequency.setTargetAtTime(240+200*br+900*k,t,0.4);
-            polvo.a.gain.setTargetAtTime(0.002+0.16*k*k,t,0.15); polvo.f.frequency.setTargetAtTime(1800+4500*k,t,0.3); setTimeout(upd,90); }; upd();
-          return ()=>{ vivo=false; sub.o.stop(); sub2.o.stop(); mar.s.stop(); polvo.s.stop(); }; },
+        coral:()=>{ // fragmentos de cristal de hielo: tintineos agudos que se rozan, un grave frío; al desarmarse, crujido de escarcha
+          const c=S.ctx, sub=osc('sine',46.25,0.06,null), escarcha=ruido(null,0.0,'highpass',5200,0.7);
+          const NOT=[0,3,5,7,10,12,15];
+          let vivo=true; const tin=()=>{ if(!vivo) return; let k=+window.hzCalor; if(!isFinite(k)) k=0.5; const d=+window.hzNubeDis||0;
+            const f=1318.5*Math.pow(2,NOT[Math.floor(Math.random()*NOT.length)]/12)*(Math.random()<0.3?2:1); golpe(f,0.6+Math.random()*1.2,0.02+0.05*k,'sine',null,true);
+            if(Math.random()<0.25) golpe(f*2.76,0.3,0.012,'sine',null,true);
+            setTimeout(tin,140+Math.random()*(1500-900*Math.max(k,d))); }; tin();
+          const upd=()=>{ if(!vivo) return; const t=c.currentTime, d=+window.hzNubeDis||0; escarcha.a.gain.setTargetAtTime(0.003+0.12*d*d,t,0.15); setTimeout(upd,90); }; upd();
+          return ()=>{ vivo=false; sub.o.stop(); escarcha.s.stop(); }; },
         'hoyo-negro':()=>{ const a=osc('sine',41,0.22,null), b=osc('sine',41.6,0.18,null), n=ruido(null,0.18,'lowpass',90,2), lfo=osc('sine',0.03,70,null); lfo.a.disconnect(); lfo.a.connect(n.f.frequency);
           return ()=>{ [a,b,lfo].forEach(x=>x.o.stop()); n.s.stop(); }; }
       };
