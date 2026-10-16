@@ -2307,7 +2307,7 @@
   AFRAME.registerComponent('nube',{
     schema:{ src:{default:'./assets/coral.bin'}, tamano:{default:1.0}, punto:{default:0.0042}, arma:{default:5.0}, brillo:{default:1.15},
       ola:{default:0}, olaVel:{default:0.35}, olaLargo:{default:1.0}, viento:{default:0}, giro:{default:0}, giroK:{default:0}, giroS:{default:0},
-      base:{default:0.28}, memoria:{default:5}, flujo:{default:1.0}, luz:{default:1.0}, luzVel:{default:0.22}, luzLargo:{default:2.0} },
+      base:{default:0.78}, memoria:{default:5}, flujo:{default:1.0}, luz:{default:1.0}, luzVel:{default:0.22}, luzLargo:{default:2.0} },
     init(){
       const T=AFRAME.THREE,d=this.data;
       this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
@@ -2375,7 +2375,7 @@
                 vC=tinte*luz*0.32;
                 gl_PointSize=clamp(uPunto*8.0*px*min(luz,1.2),0.0,56.0);
                 gl_Position=luz<0.04?vec4(2.0,2.0,2.0,1.0):projectionMatrix*mv; return; }
-              vC=vC*(1.0-0.2*step(0.001,s)*(1.0-min(luz,1.0)))+tinte*luz*1.5;   // la arista en reposo baja un poco: la luz se lee por contraste
+              vC+=tinte*luz*1.5;   // la arista en reposo baja un poco: la luz se lee por contraste
               gl_PointSize=clamp(uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8+luz*0.7)*px,1.0,7.0);
               gl_Position=projectionMatrix*mv; }`;
         this.pts=new T.Points(g,new T.ShaderMaterial({uniforms:this.u,transparent:false,depthWrite:true,depthTest:true,vertexShader:VS,
@@ -2455,7 +2455,7 @@
               // acercarse: la fractura se abre a los dos lados de cada grieta y suelta escarcha
               float lado=sign(h(r*91.7)-0.5);
               p.xz+=nrm*lado*cr*uAbre*uCerca*(0.6+0.8*r);
-              float suelta=step(0.93,r)*uCerca;
+              float suelta=step(0.985,r)*uCerca;
               p+=vec3(sin(uTime*0.7+r*40.0),-0.6-r,cos(uTime*0.6+r*33.0))*0.05*suelta*(0.5+0.5*sin(uTime*0.9+r*20.0));
               p.y-=(1.0-k)*(0.08+0.12*r);
               // destello: cada grieta refleja la luz cuando el ángulo de la mirada coincide con su cara
@@ -2500,7 +2500,7 @@
         const fr=Math.abs(this._c.y), meta=Math.min(1,Math.max(0,(0.97-fr)/0.5));
         this.tilt+=(meta-this.tilt)*Math.min(1,st*2.5); }
       // cercanía: la misma que usa el resto de la escena (window.hzCalor, 0-1)
-      let k=+window.hzCalor; if(!isFinite(k)) k=0.5; const mc=Math.min(1,Math.max(0,(k-0.55)/0.3));
+      let k=+window.hzCalor; if(!isFinite(k)) k=0.5; const mc=Math.min(1,Math.max(0,(k-0.72)/0.28))*0.6;
       this.cerca+=(mc-this.cerca)*Math.min(1,st*(mc>this.cerca?1.2:0.6));
       this.u.uArma.value=Math.min(1,this.t/d.arma); this.u.uTime.value=this.t;
       this.u.uTilt.value=this.tilt*this.tilt*(3-2*this.tilt); this.u.uCerca.value=this.cerca;
