@@ -2307,12 +2307,13 @@
   AFRAME.registerComponent('nube',{
     schema:{ src:{default:'./assets/coral.bin'}, tamano:{default:1.0}, punto:{default:0.0042}, arma:{default:5.0}, brillo:{default:1.15},
       ola:{default:0}, olaVel:{default:0.35}, olaLargo:{default:1.0}, viento:{default:0}, giro:{default:0}, giroK:{default:0}, giroS:{default:0},
-      base:{default:0.28}, memoria:{default:5}, flujo:{default:1.0} },
+      base:{default:0.28}, memoria:{default:5}, flujo:{default:1.0}, luz:{default:1.0}, luzVel:{default:0.22}, luzLargo:{default:2.0} },
     init(){
       const T=AFRAME.THREE,d=this.data;
       this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
       this.u={uTime:{value:0},uOrden:{value:0},uCerca:{value:0.5},uViewH:{value:800},uPunto:{value:d.punto},uBrillo:{value:d.brillo},uFlujo:{value:d.flujo},
-        uOla:{value:d.ola},uOlaVel:{value:d.olaVel},uOlaLargo:{value:d.olaLargo},uViento:{value:d.viento},uGiro:{value:d.giro},uGiroK:{value:d.giroK},uGiroS:{value:d.giroS}};
+        uOla:{value:d.ola},uOlaVel:{value:d.olaVel},uOlaLargo:{value:d.olaLargo},uViento:{value:d.viento},uGiro:{value:d.giro},uGiroK:{value:d.giroK},uGiroS:{value:d.giroS},
+        uLuz:{value:d.luz},uLuzVel:{value:d.luzVel},uLuzLargo:{value:d.luzLargo},uGlowPass:{value:0}};
       this.t=0; this.running=false; this.pts=null; this.cargando=false; this.energia=0; this.orden=0;
       this._c=new T.Vector3(); this._d=new T.Vector3(); this._prev=null;
       this.anchor.addEventListener('targetFound',()=>this.start());
@@ -2330,9 +2331,8 @@
         for(let i=0;i<n;i++) R[i]=Math.random();
         const g=new T.BufferGeometry();
         g.setAttribute('position',new T.BufferAttribute(P,3)); g.setAttribute('aCol',new T.BufferAttribute(col,4,true)); g.setAttribute('aR',new T.BufferAttribute(R,1));
-        this.pts=new T.Points(g,new T.ShaderMaterial({uniforms:this.u,transparent:false,depthWrite:true,depthTest:true,
-          vertexShader:`attribute vec4 aCol; attribute float aR;
-            uniform float uTime,uOrden,uCerca,uViewH,uPunto,uBrillo,uFlujo,uOla,uOlaVel,uOlaLargo,uViento,uGiro,uGiroK,uGiroS; varying vec3 vC;
+        const VS=`attribute vec4 aCol; attribute float aR;
+            uniform float uTime,uOrden,uCerca,uViewH,uPunto,uBrillo,uFlujo,uOla,uOlaVel,uOlaLargo,uViento,uGiro,uGiroK,uGiroS,uLuz,uLuzVel,uLuzLargo,uGlowPass; varying vec3 vC;
             // ruido simplex 3D (Ashima Arts, MIT)
             vec3 m289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;} vec4 m289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
             vec4 perm(vec4 x){return m289(((x*34.0)+1.0)*x);} vec4 tis(vec4 r){return 1.79284291400159-0.85373472095314*r;}
@@ -2366,12 +2366,26 @@
               vec3 q=p+(w1*0.10+w2*0.05)*dd*(0.6+r)+vec3(0.0,0.0,dd*dd*(0.05+0.18*r));
               q+=w2*0.0025;                                                        // respiración leve aun en orden
               vec3 base=pow(aCol.rgb,vec3(0.85))*uBrillo; vC=base*(1.0-dd*0.45)+frente*(base*0.9+0.12)+ola*vec3(1.0,0.95,0.85);
+              // LUZ QUE RECORRE LAS ARISTAS: cometas que viajan por el recorrido guardado en cada punto (canal a)
+              float fl=fract(s*uLuzLargo-uTime*uLuzVel), luz=uLuz*(exp(-fl*24.0)*1.4+0.3*exp(-(1.0-fl)*60.0))*step(0.001,s)*(1.0-dd*0.8);
+              vec3 tinte=mix(base*1.8,vec3(1.0),0.35);
               vec4 mv=modelViewMatrix*vec4(q,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
-              gl_PointSize=clamp(uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,10.0);
-              gl_Position=projectionMatrix*mv; }`,
+              float px=sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z));
+              if(uGlowPass>0.5){                                                   // halo: solo los puntos donde pasa la luz
+                vC=tinte*luz*0.55;
+                gl_PointSize=clamp(uPunto*7.0*px*min(luz,1.2),0.0,48.0);
+                gl_Position=luz<0.04?vec4(2.0,2.0,2.0,1.0):projectionMatrix*mv; return; }
+              vC+=tinte*luz*0.9;
+              gl_PointSize=clamp(uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8+luz*0.9)*px,1.0,10.0);
+              gl_Position=projectionMatrix*mv; }`;
+        this.pts=new T.Points(g,new T.ShaderMaterial({uniforms:this.u,transparent:false,depthWrite:true,depthTest:true,vertexShader:VS,
           fragmentShader:`precision mediump float; varying vec3 vC; void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25) discard; gl_FragColor=vec4(vC*(1.0-e*1.2),1.0); }`}));
+        // segundo pase con la misma geometría: halo aditivo que no tapa la forma
+        this.glow=new T.Points(g,new T.ShaderMaterial({uniforms:Object.assign({},this.u,{uGlowPass:{value:1}}),transparent:true,depthWrite:false,depthTest:true,blending:T.AdditiveBlending,vertexShader:VS,
+          fragmentShader:`precision mediump float; varying vec3 vC; void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q)*4.0; if(e>1.0) discard; gl_FragColor=vec4(vC*exp(-e*3.5),1.0); }`}));
+        this.glow.frustumCulled=false; this.glow.renderOrder=3; this.pts.add(this.glow);
         this.pts.frustumCulled=false; this.pts.visible=this.running;
-        const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.pts.layers.set(2); window.hzCapa2=true; }
+        const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.pts.layers.set(2); this.glow.layers.set(2); window.hzCapa2=true; }
         this.el.object3D.add(this.pts); this.t=0;
       }).catch(e=>{ this.cargando=false; console.warn('[Hz] no se pudo leer la nube',d.src,e); });
     },
@@ -2404,12 +2418,13 @@
   <script>
   AFRAME.registerComponent('fractura',{
     schema:{ src:{default:'./assets/c-fractura.bin'}, tamano:{default:1.0}, punto:{default:0.0026}, arma:{default:4.5}, brillo:{default:0.42},
-      capas:{default:0.16}, abre:{default:0.035}, destello:{default:1.0} },
+      capas:{default:0.16}, abre:{default:0.035}, destello:{default:1.0}, luz:{default:1.0}, luzVel:{default:0.22}, luzLargo:{default:2.0} },
     init(){
       const T=AFRAME.THREE,d=this.data;
       this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
       this.u={uTime:{value:0},uArma:{value:0},uCerca:{value:0},uTilt:{value:0},uView:{value:new T.Vector3(0,-1,0)},uViewH:{value:800},
-        uPunto:{value:d.punto},uBrillo:{value:d.brillo},uCapas:{value:d.capas},uAbre:{value:d.abre},uDest:{value:d.destello}};
+        uPunto:{value:d.punto},uBrillo:{value:d.brillo},uCapas:{value:d.capas},uAbre:{value:d.abre},uDest:{value:d.destello},
+        uLuz:{value:d.luz},uLuzVel:{value:d.luzVel},uLuzLargo:{value:d.luzLargo},uGlowPass:{value:0}};
       this.t=0; this.running=false; this.pts=null; this.cargando=false; this.tilt=0; this.cerca=0;
       this._c=new T.Vector3();
       this.anchor.addEventListener('targetFound',()=>this.start());
@@ -2427,9 +2442,8 @@
         const g=new T.BufferGeometry();
         g.setAttribute('position',new T.BufferAttribute(P,3)); g.setAttribute('aCol',new T.BufferAttribute(col,4,true));
         g.setAttribute('aEx',new T.BufferAttribute(ex,4,true)); g.setAttribute('aR',new T.BufferAttribute(R,1));
-        this.pts=new T.Points(g,new T.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:false,depthTest:true,blending:T.AdditiveBlending,
-          vertexShader:`attribute vec4 aCol; attribute vec4 aEx; attribute float aR;
-            uniform float uTime,uArma,uCerca,uTilt,uViewH,uPunto,uBrillo,uCapas,uAbre,uDest; uniform vec3 uView; varying vec3 vC; varying float vA;
+        const VS=`attribute vec4 aCol; attribute vec4 aEx; attribute float aR;
+            uniform float uTime,uArma,uCerca,uTilt,uViewH,uPunto,uBrillo,uCapas,uAbre,uDest,uLuz,uLuzVel,uLuzLargo,uGlowPass; uniform vec3 uView; varying vec3 vC; varying float vA;
             float h(float n){ return fract(sin(n)*43758.5453); }
             void main(){
               vec3 p=position; float capa=aCol.a*2.0-1.0, s=aEx.r, cr=aEx.a, r=aR;
@@ -2450,13 +2464,27 @@
               float tw=0.85+0.15*sin(uTime*3.0+r*60.0);
               vC=aCol.rgb*uBrillo*tw*(0.45+0.9*cr+0.6*uCerca*cr)+gl*vec3(0.75,0.92,1.0)*0.9;
               vA=k;
+              // LUZ QUE RECORRE LAS GRIETAS: sale del punto de impacto y corre hacia el borde por cada fisura
+              float fl=fract(s*uLuzLargo-uTime*uLuzVel), luz=uLuz*(exp(-fl*24.0)*1.4+0.3*exp(-(1.0-fl)*60.0))*smoothstep(0.25,0.7,cr);
+              vec3 tinte=mix(aCol.rgb*1.6,vec3(1.0),0.4);
               vec4 mv=modelViewMatrix*vec4(p,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
-              gl_PointSize=clamp(uPunto*(0.8+0.6*cr+gl*1.5)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,9.0);
-              gl_Position=projectionMatrix*mv; }`,
+              float px=sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z));
+              if(uGlowPass>0.5){
+                vC=tinte*luz*0.4;
+                gl_PointSize=clamp(uPunto*7.0*px*min(luz,1.2),0.0,48.0);
+                gl_Position=luz<0.04?vec4(2.0,2.0,2.0,1.0):projectionMatrix*mv; return; }
+              vC+=tinte*luz*0.6*uBrillo;
+              gl_PointSize=clamp(uPunto*(0.8+0.6*cr+gl*1.5+luz*0.8)*px,1.0,9.0);
+              gl_Position=projectionMatrix*mv; }`;
+        this.pts=new T.Points(g,new T.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:false,depthTest:true,blending:T.AdditiveBlending,
+          vertexShader:VS,
           fragmentShader:`precision mediump float; varying vec3 vC; varying float vA;
             void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25||vA<0.01) discard; gl_FragColor=vec4(vC*vA*(1.0-e*3.6),1.0); }`}));
+        this.glow=new T.Points(g,new T.ShaderMaterial({uniforms:Object.assign({},this.u,{uGlowPass:{value:1}}),transparent:true,depthWrite:false,depthTest:true,blending:T.AdditiveBlending,vertexShader:VS,
+          fragmentShader:`precision mediump float; varying vec3 vC; varying float vA; void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q)*4.0; if(e>1.0||vA<0.01) discard; gl_FragColor=vec4(vC*vA*exp(-e*3.5),1.0); }`}));
+        this.glow.frustumCulled=false; this.glow.renderOrder=3; this.pts.add(this.glow);
         this.pts.frustumCulled=false; this.pts.visible=this.running;
-        const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.pts.layers.set(2); window.hzCapa2=true; }   // con su propio color, fuera del mapa térmico
+        const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.pts.layers.set(2); this.glow.layers.set(2); window.hzCapa2=true; }   // con su propio color, fuera del mapa térmico
         this.el.object3D.add(this.pts);
       }).catch(e=>{ this.cargando=false; console.warn('[Hz] no se pudo leer la fractura',d.src,e); });
     },
