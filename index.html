@@ -2367,15 +2367,15 @@
               q+=w2*0.0025;                                                        // respiración leve aun en orden
               vec3 base=pow(aCol.rgb,vec3(0.85))*uBrillo; vC=base*(1.0-dd*0.45)+frente*(base*0.9+0.12)+ola*vec3(1.0,0.95,0.85);
               // LUZ QUE RECORRE LAS ARISTAS: cometas que viajan por el recorrido guardado en cada punto (canal a)
-              float fl=fract(s*uLuzLargo-uTime*uLuzVel), luz=uLuz*(exp(-fl*24.0)*1.4+0.3*exp(-(1.0-fl)*60.0))*step(0.001,s)*(1.0-dd*0.8);
-              vec3 tinte=mix(base*1.8,vec3(1.0),0.35);
+              float fl=fract(s*uLuzLargo-uTime*uLuzVel), luz=uLuz*(exp(-fl*20.0)*1.5+0.3*exp(-(1.0-fl)*60.0))*step(0.001,s)*(1.0-dd*0.3);
+              vec3 tinte=mix(base*2.0,vec3(1.0,0.98,0.92),0.5);
               vec4 mv=modelViewMatrix*vec4(q,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
               float px=sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z));
               if(uGlowPass>0.5){                                                   // halo: solo los puntos donde pasa la luz
-                vC=tinte*luz*0.55;
-                gl_PointSize=clamp(uPunto*7.0*px*min(luz,1.2),0.0,48.0);
+                vC=tinte*luz*0.32;
+                gl_PointSize=clamp(uPunto*8.0*px*min(luz,1.2),0.0,56.0);
                 gl_Position=luz<0.04?vec4(2.0,2.0,2.0,1.0):projectionMatrix*mv; return; }
-              vC+=tinte*luz*0.9;
+              vC=vC*(1.0-0.35*step(0.001,s)*(1.0-min(luz,1.0)))+tinte*luz*1.2;   // la arista en reposo baja un poco: la luz se lee por contraste
               gl_PointSize=clamp(uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8+luz*0.9)*px,1.0,10.0);
               gl_Position=projectionMatrix*mv; }`;
         this.pts=new T.Points(g,new T.ShaderMaterial({uniforms:this.u,transparent:false,depthWrite:true,depthTest:true,vertexShader:VS,
@@ -2465,15 +2465,15 @@
               vC=aCol.rgb*uBrillo*tw*(0.45+0.9*cr+0.6*uCerca*cr)+gl*vec3(0.75,0.92,1.0)*0.9;
               vA=k;
               // LUZ QUE RECORRE LAS GRIETAS: sale del punto de impacto y corre hacia el borde por cada fisura
-              float fl=fract(s*uLuzLargo-uTime*uLuzVel), luz=uLuz*(exp(-fl*24.0)*1.4+0.3*exp(-(1.0-fl)*60.0))*smoothstep(0.25,0.7,cr);
+              float fl=fract(s*uLuzLargo-uTime*uLuzVel), luz=uLuz*(exp(-fl*20.0)*1.5+0.3*exp(-(1.0-fl)*60.0))*smoothstep(0.25,0.7,cr);
               vec3 tinte=mix(aCol.rgb*1.6,vec3(1.0),0.4);
               vec4 mv=modelViewMatrix*vec4(p,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
               float px=sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z));
               if(uGlowPass>0.5){
-                vC=tinte*luz*0.4;
-                gl_PointSize=clamp(uPunto*7.0*px*min(luz,1.2),0.0,48.0);
+                vC=tinte*luz*0.26;
+                gl_PointSize=clamp(uPunto*8.0*px*min(luz,1.2),0.0,56.0);
                 gl_Position=luz<0.04?vec4(2.0,2.0,2.0,1.0):projectionMatrix*mv; return; }
-              vC+=tinte*luz*0.6*uBrillo;
+              vC+=tinte*luz*1.2*uBrillo;
               gl_PointSize=clamp(uPunto*(0.8+0.6*cr+gl*1.5+luz*0.8)*px,1.0,9.0);
               gl_Position=projectionMatrix*mv; }`;
         this.pts=new T.Points(g,new T.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:false,depthTest:true,blending:T.AdditiveBlending,
