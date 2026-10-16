@@ -44,39 +44,14 @@ window.HZ = {
 
   escenas: [
 
-    // Las siete escenas son nubes de puntos con su propio color (assets/*.bin). Cada una llega como polvo y se arma de pie
-    // sobre la tarjeta; al acercar mucho el teléfono se desarma en polvo que gira y al alejarlo se vuelve a condensar.
-    // Ajustes comunes por escena: opciones: { 'nube': { tamano: 1, punto: 0.0035, brillo: 1.15, arma: 4.5, dispersa: 1 } }
-    //   tamano: escala de la nube · punto: tamaño de cada punto · arma: segundos que tarda en armarse · dispersa: 0 = no se desarma
-    //   ola / olaVel: pulsos de luz que la recorren · viento: cuánto se mece · giro: velocidad de giro
-    // Los efectos anteriores siguen disponibles con -lineas: { efecto: 'micelio-lineas' }
-
-    // 0 · MICELIO — trama circular de hifas finísimas sobre la página; pulsos de luz que salen de los centros
-    { efecto: 'micelio', marco: false },
-
-    // 1 · MOSCA — tomografía de una mosca en nube de puntos, violeta y naranja, de pie sobre la tarjeta
-    //     (el vórtice doble "así arriba, como abajo" sigue disponible: { efecto: 'espejo' })
-    { efecto: 'deshielo', marco: false },
-
-    // 2 · BOSQUE — un claro circular de fustes verticales de puntos que se mecen; al acercar el teléfono sube el viento
-    { efecto: 'bosque', marco: false },
-
-    // 3 · CORAL — escaneo real de un coral (160 mil puntos con su color)
-    { efecto: 'coral', marco: false },
-
-
-    // 4 · TERRENO — relieve en nube de puntos que dibuja una malla cian: montañas que respiran y se desplazan lento; al acercar el teléfono se levantan
-    //     ajustes: opciones: { 'terreno': { ancho: 1.3, alto: 0.2, lineas: 72, velocidad: 1, brillo: 1 } }
-    //     (la esfera de espirales sigue disponible: { efecto: 'espiral' })
-    { efecto: 'glaciar', marco: false },
-
-    // 5 · SINAPSIS — núcleos incandescentes unidos por arcos de polvo; los impulsos viajan de uno a otro
-    { efecto: 'sinapsis', marco: false },
-
-    // 6 · DISCO DE HIELO — la nube nace de las grietas de la imagen (assets/c-fractura.bin), se arma desde el punto de impacto;
-    //     inclinar el teléfono separa las capas del hielo y hace destellar las grietas, acercarlo abre la fractura y suelta escarcha
-    //     ajustes: opciones: { 'fractura': { capas: 0.16, abre: 0.035, destello: 1, punto: 0.0034, arma: 4.5 } }
-    { efecto: 'fractura', marco: false }
+    // Las siete escenas son la imagen de cada trigger en nube de puntos (assets/m-N.bin), calzada exactamente sobre la impresa.
+    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 0, cae: 0 } } },
+    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 0, cae: 0 } } },
+    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 0, cae: 0 } } },
+    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 0, cae: 0 } } },
+    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 0, cae: 0 } } },
+    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 0, cae: 0 } } },
+    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 0, cae: 0 } } }
 
   ]
 };
