@@ -2398,6 +2398,90 @@
     }
   });
   </script>
+  <!-- FRACTURA: la nube nace de las grietas de la imagen del trigger (assets/c-fractura.bin).
+       Se arma desde el punto de impacto hacia afuera. Al inclinar el teléfono las capas del hielo se separan en profundidad
+       y las grietas destellan según el ángulo; al acercarlo la fractura se abre y suelta escarcha; al alejarlo se vuelve a cerrar. -->
+  <script>
+  AFRAME.registerComponent('fractura',{
+    schema:{ src:{default:'./assets/c-fractura.bin'}, tamano:{default:1.0}, punto:{default:0.0026}, arma:{default:4.5}, brillo:{default:0.42},
+      capas:{default:0.16}, abre:{default:0.035}, destello:{default:1.0} },
+    init(){
+      const T=AFRAME.THREE,d=this.data;
+      this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
+      this.u={uTime:{value:0},uArma:{value:0},uCerca:{value:0},uTilt:{value:0},uView:{value:new T.Vector3(0,-1,0)},uViewH:{value:800},
+        uPunto:{value:d.punto},uBrillo:{value:d.brillo},uCapas:{value:d.capas},uAbre:{value:d.abre},uDest:{value:d.destello}};
+      this.t=0; this.running=false; this.pts=null; this.cargando=false; this.tilt=0; this.cerca=0;
+      this._c=new T.Vector3();
+      this.anchor.addEventListener('targetFound',()=>this.start());
+      this.anchor.addEventListener('targetLost',()=>{ clearTimeout(this._lostT); this._lostT=setTimeout(()=>this.reset(),2000); });
+    },
+    cargar(){
+      if(this.cargando) return; this.cargando=true;
+      const T=AFRAME.THREE,d=this.data;
+      fetch(d.src).then(r=>{ if(!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then(buf=>{
+        const dv=new DataView(buf), n=dv.getUint32(0,true), E=dv.getFloat32(4,true);
+        const qi=new Int16Array(buf,8,n*3), col=new Uint8Array(buf,8+n*6,n*4), ex=new Uint8Array(buf,8+n*10,n*4);
+        const P=new Float32Array(n*3), R=new Float32Array(n);
+        for(let i=0;i<n*3;i++) P[i]=qi[i]/32767*E*d.tamano;
+        for(let i=0;i<n;i++) R[i]=Math.random();
+        const g=new T.BufferGeometry();
+        g.setAttribute('position',new T.BufferAttribute(P,3)); g.setAttribute('aCol',new T.BufferAttribute(col,4,true));
+        g.setAttribute('aEx',new T.BufferAttribute(ex,4,true)); g.setAttribute('aR',new T.BufferAttribute(R,1));
+        this.pts=new T.Points(g,new T.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:false,depthTest:true,blending:T.AdditiveBlending,
+          vertexShader:`attribute vec4 aCol; attribute vec4 aEx; attribute float aR;
+            uniform float uTime,uArma,uCerca,uTilt,uViewH,uPunto,uBrillo,uCapas,uAbre,uDest; uniform vec3 uView; varying vec3 vC; varying float vA;
+            float h(float n){ return fract(sin(n)*43758.5453); }
+            void main(){
+              vec3 p=position; float capa=aCol.a*2.0-1.0, s=aEx.r, cr=aEx.a, r=aR;
+              vec2 nrm=aEx.gb*2.0-1.0;
+              // armado: el hielo aparece desde el impacto hacia afuera, cada punto sube desde la página
+              float k=smoothstep(s*1.05,s*1.05+0.12,uArma*1.25);
+              // inclinar: las capas del hielo se separan en profundidad (las grietas quedan adelante)
+              p.y-=capa*uCapas*uTilt;
+              // acercarse: la fractura se abre a los dos lados de cada grieta y suelta escarcha
+              float lado=sign(h(r*91.7)-0.5);
+              p.xz+=nrm*lado*cr*uAbre*uCerca*(0.6+0.8*r);
+              float suelta=step(0.93,r)*uCerca;
+              p+=vec3(sin(uTime*0.7+r*40.0),-0.6-r,cos(uTime*0.6+r*33.0))*0.05*suelta*(0.5+0.5*sin(uTime*0.9+r*20.0));
+              p.y-=(1.0-k)*(0.08+0.12*r);
+              // destello: cada grieta refleja la luz cuando el ángulo de la mirada coincide con su cara
+              vec3 n3=normalize(vec3(nrm.x,(h(r*13.1)-0.5)*1.6,nrm.y));
+              float gl=pow(abs(dot(n3,uView)),14.0)*cr*uDest;
+              float tw=0.85+0.15*sin(uTime*3.0+r*60.0);
+              vC=aCol.rgb*uBrillo*tw*(0.45+0.9*cr+0.6*uCerca*cr)+gl*vec3(0.75,0.92,1.0)*0.9;
+              vA=k;
+              vec4 mv=modelViewMatrix*vec4(p,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
+              gl_PointSize=clamp(uPunto*(0.8+0.6*cr+gl*1.5)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,9.0);
+              gl_Position=projectionMatrix*mv; }`,
+          fragmentShader:`precision mediump float; varying vec3 vC; varying float vA;
+            void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25||vA<0.01) discard; gl_FragColor=vec4(vC*vA*(1.0-e*3.6),1.0); }`}));
+        this.pts.frustumCulled=false; this.pts.visible=this.running;
+        const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.pts.layers.set(2); window.hzCapa2=true; }   // con su propio color, fuera del mapa térmico
+        this.el.object3D.add(this.pts);
+      }).catch(e=>{ this.cargando=false; console.warn('[Hz] no se pudo leer la fractura',d.src,e); });
+    },
+    start(){ clearTimeout(this._lostT); this.cargar(); if(this.running) return; this.running=true; this.t=0; if(this.pts) this.pts.visible=true; },
+    reset(){ this.running=false; if(this.pts) this.pts.visible=false; window.hzNubeDis=0; },
+    tick(t,dt){
+      if(!this.running){ if(this.anchor.components&&this.anchor.components['mindar-image-target']&&this.anchor.object3D.visible) this.start(); if(!this.running) return; }
+      if(!this.pts) return; if(!this.pts.visible) this.pts.visible=true;
+      const d=this.data, st=Math.min(0.05,(dt||16)/1000); this.t+=st;
+      // inclinación: cuánto se aparta la mirada del frente del disco (su normal local es el eje y)
+      const cam=this.el.sceneEl.camera;
+      if(cam){ cam.getWorldPosition(this._c); this.pts.worldToLocal(this._c); this._c.normalize(); this.u.uView.value.copy(this._c);
+        const fr=Math.abs(this._c.y), meta=Math.min(1,Math.max(0,(0.97-fr)/0.5));
+        this.tilt+=(meta-this.tilt)*Math.min(1,st*2.5); }
+      // cercanía: la misma que usa el resto de la escena (window.hzCalor, 0-1)
+      let k=+window.hzCalor; if(!isFinite(k)) k=0.5; const mc=Math.min(1,Math.max(0,(k-0.55)/0.3));
+      this.cerca+=(mc-this.cerca)*Math.min(1,st*(mc>this.cerca?1.2:0.6));
+      this.u.uArma.value=Math.min(1,this.t/d.arma); this.u.uTime.value=this.t;
+      this.u.uTilt.value=this.tilt*this.tilt*(3-2*this.tilt); this.u.uCerca.value=this.cerca;
+      window.hzNubeDis=this.cerca*0.8;                     // el sonido de escarcha sigue a la fractura que se abre
+      const r=this.el.sceneEl.renderer; if(r) this.u.uViewH.value=r.getContext().drawingBufferHeight;
+    }
+  });
+  </script>
+
   <!-- BOSQUE EN NUBE DE PUNTOS: árboles generados por ramificación, como un escaneo LiDAR; el bosque crece
        desde la página, se mece con el viento y lo recorre una línea de escaneo. -->
   <script>
@@ -3423,6 +3507,8 @@
       'hoyo-negro':{src:'./assets/c-disco.bin',     punto:0.0032, tamano:1.0, ola:0.5, olaVel:0.12, olaLargo:1.0},
       deshielo:    {src:'./assets/c-cueva.bin',     punto:0.0032, tamano:1.0, ola:0.5, olaVel:0.12, olaLargo:1.0},
       glaciar:     {src:'./assets/c-montana.bin',   punto:0.0032, tamano:1.0, ola:0.5, olaVel:0.12, olaLargo:1.0}};
+    // fractura · el disco de hielo nace de las grietas de la imagen; inclinar separa las capas, acercarse abre la fractura
+    EFECTOS.fractura=(e,i)=>({anchor:'', inner:marco(e,i,0.5)+'<a-entity fractura="'+esc(attr('fractura',e))+'"></a-entity>'});
     // terreno · relieve en malla de alambre cian
     EFECTOS.terreno=(e,i)=>({anchor:'', inner:'<a-entity terreno="'+esc(attr('terreno',e))+'"></a-entity>'});
     Object.keys(NUBES).forEach(n=>{ if(EFECTOS[n]) EFECTOS[n+'-lineas']=EFECTOS[n];
@@ -3659,7 +3745,7 @@
         'hoyo-negro':()=>{ const a=osc('sine',41,0.22,null), b=osc('sine',41.6,0.18,null), n=ruido(null,0.18,'lowpass',90,2), lfo=osc('sine',0.03,70,null); lfo.a.disconnect(); lfo.a.connect(n.f.frequency);
           return ()=>{ [a,b,lfo].forEach(x=>x.o.stop()); n.s.stop(); }; }
       };
-      DRONES.sinapsis=DRONES.glaciar; DRONES['hoyo-negro']=DRONES.coral;
+      DRONES.sinapsis=DRONES.glaciar; DRONES['hoyo-negro']=DRONES.coral; DRONES.fractura=DRONES.coral;
       S.start=(ef)=>{ if(!S.ctx||S.on[ef]||!DRONES[ef]) return; clearTimeout(S['_t'+ef]); S.on[ef]=DRONES[ef](); };
       S.stop=(ef)=>{ const f=S.on[ef]; if(!f) return; delete S.on[ef]; S['_t'+ef]=setTimeout(()=>{ try{ f(); }catch(e){} },400); };
       // eventos de cada efecto

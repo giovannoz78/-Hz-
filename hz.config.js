@@ -73,8 +73,10 @@ window.HZ = {
     // 5 · SINAPSIS — núcleos incandescentes unidos por arcos de polvo; los impulsos viajan de uno a otro
     { efecto: 'sinapsis', marco: false },
 
-    // 6 · AGUJERO NEGRO — disco de acreción que gira más rápido cerca del centro, anillo de fotones y estrellas
-    { efecto: 'hoyo-negro', marco: false }
+    // 6 · DISCO DE HIELO — la nube nace de las grietas de la imagen (assets/c-fractura.bin), se arma desde el punto de impacto;
+    //     inclinar el teléfono separa las capas del hielo y hace destellar las grietas, acercarlo abre la fractura y suelta escarcha
+    //     ajustes: opciones: { 'fractura': { capas: 0.16, abre: 0.035, destello: 1, punto: 0.0034, arma: 4.5 } }
+    { efecto: 'fractura', marco: false }
 
   ]
 };
