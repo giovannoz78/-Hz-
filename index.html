@@ -2375,17 +2375,17 @@
                 vC=tinte*luz*0.32;
                 gl_PointSize=clamp(uPunto*8.0*px*min(luz,1.2),0.0,56.0);
                 gl_Position=luz<0.04?vec4(2.0,2.0,2.0,1.0):projectionMatrix*mv; return; }
-              vC=vC*(1.0-0.35*step(0.001,s)*(1.0-min(luz,1.0)))+tinte*luz*1.2;   // la arista en reposo baja un poco: la luz se lee por contraste
-              gl_PointSize=clamp(uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8+luz*0.9)*px,1.0,10.0);
+              vC=vC*(1.0-0.35*step(0.001,s)*(1.0-min(luz,1.0)))+tinte*luz*0.7;   // la arista en reposo baja un poco: la luz se lee por contraste
+              gl_PointSize=clamp(uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8+luz*0.35)*px,1.0,10.0);
               gl_Position=projectionMatrix*mv; }`;
         this.pts=new T.Points(g,new T.ShaderMaterial({uniforms:this.u,transparent:false,depthWrite:true,depthTest:true,vertexShader:VS,
           fragmentShader:`precision mediump float; varying vec3 vC; void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25) discard; gl_FragColor=vec4(vC*(1.0-e*1.2),1.0); }`}));
         // segundo pase con la misma geometría: halo aditivo que no tapa la forma
         this.glow=new T.Points(g,new T.ShaderMaterial({uniforms:Object.assign({},this.u,{uGlowPass:{value:1}}),transparent:true,depthWrite:false,depthTest:true,blending:T.AdditiveBlending,vertexShader:VS,
           fragmentShader:`precision mediump float; varying vec3 vC; void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q)*4.0; if(e>1.0) discard; gl_FragColor=vec4(vC*exp(-e*3.5),1.0); }`}));
-        this.glow.frustumCulled=false; this.glow.renderOrder=3; this.pts.add(this.glow);
+        this.glow.frustumCulled=false; this.glow.renderOrder=3; 
         this.pts.frustumCulled=false; this.pts.visible=this.running;
-        const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.pts.layers.set(2); this.glow.layers.set(2); window.hzCapa2=true; }
+        const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.pts.layers.set(2); window.hzCapa2=true; }
         this.el.object3D.add(this.pts); this.t=0;
       }).catch(e=>{ this.cargando=false; console.warn('[Hz] no se pudo leer la nube',d.src,e); });
     },
@@ -2473,8 +2473,8 @@
                 vC=tinte*luz*0.26;
                 gl_PointSize=clamp(uPunto*8.0*px*min(luz,1.2),0.0,56.0);
                 gl_Position=luz<0.04?vec4(2.0,2.0,2.0,1.0):projectionMatrix*mv; return; }
-              vC+=tinte*luz*1.2*uBrillo;
-              gl_PointSize=clamp(uPunto*(0.8+0.6*cr+gl*1.5+luz*0.8)*px,1.0,9.0);
+              vC+=tinte*luz*0.7*uBrillo;
+              gl_PointSize=clamp(uPunto*(0.8+0.6*cr+gl*1.5+luz*0.3)*px,1.0,9.0);
               gl_Position=projectionMatrix*mv; }`;
         this.pts=new T.Points(g,new T.ShaderMaterial({uniforms:this.u,transparent:true,depthWrite:false,depthTest:true,blending:T.AdditiveBlending,
           vertexShader:VS,
@@ -2482,9 +2482,9 @@
             void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25||vA<0.01) discard; gl_FragColor=vec4(vC*vA*(1.0-e*3.6),1.0); }`}));
         this.glow=new T.Points(g,new T.ShaderMaterial({uniforms:Object.assign({},this.u,{uGlowPass:{value:1}}),transparent:true,depthWrite:false,depthTest:true,blending:T.AdditiveBlending,vertexShader:VS,
           fragmentShader:`precision mediump float; varying vec3 vC; varying float vA; void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q)*4.0; if(e>1.0||vA<0.01) discard; gl_FragColor=vec4(vC*vA*exp(-e*3.5),1.0); }`}));
-        this.glow.frustumCulled=false; this.glow.renderOrder=3; this.pts.add(this.glow);
+        this.glow.frustumCulled=false; this.glow.renderOrder=3; 
         this.pts.frustumCulled=false; this.pts.visible=this.running;
-        const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.pts.layers.set(2); this.glow.layers.set(2); window.hzCapa2=true; }   // con su propio color, fuera del mapa térmico
+        const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.pts.layers.set(2); window.hzCapa2=true; }   // con su propio color, fuera del mapa térmico
         this.el.object3D.add(this.pts);
       }).catch(e=>{ this.cargando=false; console.warn('[Hz] no se pudo leer la fractura',d.src,e); });
     },
