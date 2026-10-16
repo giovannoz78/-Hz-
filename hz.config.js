@@ -45,13 +45,13 @@ window.HZ = {
   escenas: [
 
     // Las siete escenas son la imagen de cada trigger en nube de puntos (assets/m-N.bin), calzada exactamente sobre la impresa.
-    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 0, cae: 0 } } },
-    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 0, cae: 0 } } },
-    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 0, cae: 0 } } },
-    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 0, cae: 0 } } },
-    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 0, cae: 0 } } },
-    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 0, cae: 0 } } },
-    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 0, cae: 0 } } }
+    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 1.0, cae: 0 } } },
+    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 1.0, cae: 0 } } },
+    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 1.0, cae: 0 } } },
+    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 1.0, cae: 0 } } },
+    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 1.0, cae: 0 } } },
+    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 1.0, cae: 0 } } },
+    { efecto: 'mapa', marco: false, vista: { vista: 'plana' }, opciones: { mapa: { brillo: 1.18, luz: 1.0, cae: 0 } } }
 
   ]
 };

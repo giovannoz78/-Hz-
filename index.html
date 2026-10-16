@@ -2529,7 +2529,7 @@
               vC=base*(0.85+g*0.4)+vec3(1.0,0.97,0.9)*g*0.55;
               // PROFUNDIDAD: la imagen se levanta según su propia luz; acercar el teléfono la deforma hacia quien mira, alejarlo la aplana
               p.z+=aEx.a*uProf*uRel;
-              p.z+=g*0.006+(1.0-k)*(0.04+0.06*aR);
+              p.z+=g*0.045*(0.4+aEx.a)+(1.0-k)*(0.04+0.06*aR);   // donde pasa la luz, la imagen se levanta como una onda
               // DESPRENDIMIENTO: cuando la luz alcanza un fragmento, una parte de los fragmentos se parte y se desploma
               // entero, girando por su peso; detrás cae el agua de deshielo en un chorro. La gravedad es la del mundo.
               float id=aEx.b*255.0, hb=fract(sin(id*12.9898)*43758.5453), hb2=fract(sin(id*78.233)*12345.678);
