@@ -2307,13 +2307,13 @@
   AFRAME.registerComponent('nube',{
     schema:{ src:{default:'./assets/coral.bin'}, tamano:{default:1.0}, punto:{default:0.0042}, arma:{default:5.0}, brillo:{default:1.15},
       ola:{default:0}, olaVel:{default:0.35}, olaLargo:{default:1.0}, viento:{default:0}, giro:{default:0}, giroK:{default:0}, giroS:{default:0},
-      base:{default:0.28}, memoria:{default:5}, flujo:{default:1.0}, termo:{default:1.0}, termoEspera:{default:6}, termoDura:{default:28}, radar:{default:24} },
+      base:{default:0.28}, memoria:{default:5}, flujo:{default:1.0}, termo:{default:1.0}, termoEspera:{default:6}, termoDura:{default:28}, radar:{default:24}, ajusta:{default:true}, genera:{default:true}, genDesde:{default:0.02}, genHasta:{default:0.45} },
     init(){
       const T=AFRAME.THREE,d=this.data;
       this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
       this.u={uTime:{value:0},uOrden:{value:0},uCerca:{value:0.5},uViewH:{value:800},uPunto:{value:d.punto},uBrillo:{value:d.brillo},uFlujo:{value:d.flujo},
         uOla:{value:d.ola},uOlaVel:{value:d.olaVel},uOlaLargo:{value:d.olaLargo},uViento:{value:d.viento},uGiro:{value:d.giro},uGiroK:{value:d.giroK},uGiroS:{value:d.giroS},
-        uTermo:{value:0},uLo:{value:0.2},uHi:{value:0.8}};
+        uTermo:{value:0},uLo:{value:0.2},uHi:{value:0.8},uGen:{value:d.genera?0:1}};
       this.t=0; this.running=false; this.pts=null; this.cargando=false; this.energia=0; this.orden=0;
       this._c=new T.Vector3(); this._d=new T.Vector3(); this._prev=null;
       this.anchor.addEventListener('targetFound',()=>this.start());
@@ -2328,6 +2328,15 @@
         const qi=new Int16Array(buf,8,n*3), col=new Uint8Array(buf,8+n*6,n*4);
         const P=new Float32Array(n*3), R=new Float32Array(n);
         for(let i=0;i<n*3;i++) P[i]=qi[i]/32767*E*d.tamano;
+        // AJUSTE AL TRIGGER: la nube se escala y centra para ocupar exactamente el ancho o el alto de la imagen impresa,
+        // apoyada sobre la página (z = 0 es el papel).
+        if(d.ajusta){ let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9,z0=1e9;
+          // la nube está modelada de pie: su cara frontal (x, altura) pasa a ser el plano de la imagen y su espesor sale de la página
+          for(let i=0;i<n;i++){ const yy=P[i*3+1]; P[i*3+1]=P[i*3+2]; P[i*3+2]=-yy; }
+          for(let i=0;i<n;i++){ const x=P[i*3],y=P[i*3+1],z=P[i*3+2]; if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; if(z<z0)z0=z; }
+          const mi=(this.anchor.id||'').match(/(\d+)$/), DA=window.HZ_DATOS&&HZ_DATOS.aspectos;
+          const asp=(mi&&DA&&+DA[mi[1]])||1, k=Math.min(1/Math.max(1e-6,x1-x0),asp/Math.max(1e-6,y1-y0)), cx=(x0+x1)/2, cy=(y0+y1)/2;
+          for(let i=0;i<n;i++){ P[i*3]=(P[i*3]-cx)*k; P[i*3+1]=(P[i*3+1]-cy)*k; P[i*3+2]=(P[i*3+2]-z0)*k; } }
         for(let i=0;i<n;i++) R[i]=Math.random();
         const g=new T.BufferGeometry();
         { const Ls=[]; for(let i=0;i<n;i+=Math.max(1,(n/20000)|0)) Ls.push((col[i*4]*0.3+col[i*4+1]*0.55+col[i*4+2]*0.15)/255); Ls.sort((a,b)=>a-b);
@@ -2335,7 +2344,7 @@
         g.setAttribute('position',new T.BufferAttribute(P,3)); g.setAttribute('aCol',new T.BufferAttribute(col,4,true)); g.setAttribute('aR',new T.BufferAttribute(R,1));
         this.pts=new T.Points(g,new T.ShaderMaterial({uniforms:this.u,transparent:false,depthWrite:true,depthTest:true,
           vertexShader:`attribute vec4 aCol; attribute float aR;
-            uniform float uTime,uOrden,uCerca,uViewH,uPunto,uBrillo,uFlujo,uOla,uOlaVel,uOlaLargo,uViento,uGiro,uGiroK,uGiroS,uTermo,uLo,uHi; varying vec3 vC;
+            uniform float uTime,uOrden,uCerca,uViewH,uPunto,uBrillo,uFlujo,uOla,uOlaVel,uOlaLargo,uViento,uGiro,uGiroK,uGiroS,uTermo,uLo,uHi,uGen; varying vec3 vC;
             // ruido simplex 3D (Ashima Arts, MIT)
             vec3 m289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;} vec4 m289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
             vec4 perm(vec4 x){return m289(((x*34.0)+1.0)*x);} vec4 tis(vec4 r){return 1.79284291400159-0.85373472095314*r;}
@@ -2381,8 +2390,11 @@
               float zt=clamp(uTermo*1.35-(sn(position*2.2)*0.5+0.5)*0.35,0.0,1.0);   // avanza por zonas
               base=mix(base,tc*uBrillo,smoothstep(0.0,1.0,zt));
               vC=base*(1.0-dd*0.45)+frente*(base*0.9+0.12)+ola*vec3(1.0,0.95,0.85);
+              // GENERACIÓN POR CERCANÍA: lejos casi nada; al acercar el teléfono los puntos nacen sobre la imagen y crecen desde el papel
+              float gk=clamp((uGen*1.15-r*0.9)/0.25,0.0,1.0);
+              q.z*=mix(0.02,1.0,smoothstep(0.0,1.0,clamp(uGen*1.3-r*0.3,0.0,1.0)));
               vec4 mv=modelViewMatrix*vec4(q,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
-              gl_PointSize=clamp(uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,10.0);
+              gl_PointSize=gk*clamp(uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,10.0);
               gl_Position=projectionMatrix*mv; }`,
           fragmentShader:`precision mediump float; varying vec3 vC; void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25) discard; gl_FragColor=vec4(vC*(1.0-e*1.2),1.0); }`}));
         this.pts.frustumCulled=false; this.pts.visible=this.running;
@@ -2413,35 +2425,39 @@
       const g=c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
       if(a<0.01||!this.pts||!this.pts.visible) return;
       const cam=this.el.sceneEl.camera; if(!cam) return;
-      // posición en pantalla de cada marca
-      const L=[],R=[];
-      for(const m of this.marcas){ this._w.copy(m.p); this.pts.localToWorld(this._w); this._w.project(cam);
-        if(this._w.z>1||Math.abs(this._w.x)>1.1||Math.abs(this._w.y)>1.1) continue;
-        const sx=(this._w.x*0.5+0.5)*W, sy=(-this._w.y*0.5+0.5)*H;
-        (sx<W/2?L:R).push({m,sx,sy}); }
-      const fs=9.5, mg=10;
-      g.font='500 '+fs+'px "SF Mono",Menlo,Consolas,monospace'; g.textBaseline='middle';
-      const colocar=(arr,izq)=>{ arr.sort((a,b)=>a.sy-b.sy); const lh=Math.min(28,(H-70)/Math.max(1,arr.length)); let y=-1e9;
-        for(const e of arr){ e.ly=Math.max(e.sy,y+lh); y=e.ly; }
-        const exceso=y-(H-40); if(exceso>0) arr.forEach(e=>e.ly-=exceso); const falta=40-(arr.length?arr[0].ly:40); if(falta>0) arr.forEach(e=>e.ly+=falta);
-        for(const e of arr){ const {m,sx,sy,ly}=e, lx=izq?mg:W-mg;
-          const X=((m.p.x+Math.sin(this.t*1.7+m.fase)*0.0006)*100).toFixed(2), Y=((m.p.y+Math.cos(this.t*1.3+m.fase)*0.0006)*100).toFixed(2);
-          const t1='T'+m.id+' X'+(X>=0?'+':'')+X, t2='    Y'+(Y>=0?'+':'')+Y, tw=Math.max(g.measureText(t1).width,g.measureText(t2).width);
-          const ex=izq?lx+tw+6:lx-tw-6;
-          g.globalAlpha=a*0.7; g.strokeStyle='#fff'; g.lineWidth=0.75;
-          g.beginPath(); g.moveTo(ex,ly); g.lineTo(sx,sy); g.stroke();
-          // retícula de esquinas
-          const r=6+Math.sin(this.t*2.2+m.fase)*1.2, e2=3;
-          g.globalAlpha=a; g.lineWidth=1;
-          [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([qx,qy])=>{ g.beginPath(); g.moveTo(sx+qx*r,sy+qy*(r-e2)); g.lineTo(sx+qx*r,sy+qy*r); g.lineTo(sx+qx*(r-e2),sy+qy*r); g.stroke(); });
-          g.fillStyle='#fff'; g.fillRect(sx-0.75,sy-0.75,1.5,1.5);
-          // texto con sombra para leerse sobre cualquier fondo
-          g.globalAlpha=a*0.82; g.fillStyle='#000'; g.fillRect(izq?lx-4:lx-tw-4,ly-lh/2+1,tw+8,lh-2); g.globalAlpha=a;
-          g.fillStyle='#fff'; g.fillRect(izq?lx-4:lx+3,ly-lh/2+1,1,lh-2);
-          g.textAlign=izq?'left':'right'; g.shadowColor='rgba(0,0,0,0.9)'; g.shadowBlur=0;
-          g.fillStyle='rgba(255,255,255,0.95)'; g.fillText(t1,lx,ly-lh*0.22); g.fillStyle='rgba(255,255,255,0.7)'; g.fillText(t2,lx,ly+lh*0.25);
-          g.shadowBlur=0; } };
-      colocar(L,true); colocar(R,false); g.globalAlpha=1;
+      const fs=9, bh=13, ocupado=[];
+      g.font='500 '+fs+'px "SF Mono",Menlo,Consolas,monospace'; g.textBaseline='middle'; g.textAlign='left';
+      const choca=(r)=>ocupado.some(o=>r.x<o.x+o.w&&r.x+r.w>o.x&&r.y<o.y+o.h&&r.y+r.h>o.y);
+      // primero los puntos, para que ninguna etiqueta tape una retícula
+      const vis=[];
+      const gz=0.02+0.98*Math.min(1,Math.max(0,this.u.uGen.value*1.3-0.15));
+      for(const m of this.marcas){ this._w.copy(m.p); this._w.z*=gz; this.pts.localToWorld(this._w); this._w.project(cam);
+        if(this._w.z>1||Math.abs(this._w.x)>1.05||Math.abs(this._w.y)>1.05){ m.sx=null; continue; }
+        m.sx=(this._w.x*0.5+0.5)*W; m.sy=(-this._w.y*0.5+0.5)*H; vis.push(m); ocupado.push({x:m.sx-7,y:m.sy-7,w:14,h:14}); }
+      for(const m of vis){
+        const X=((m.p.x+Math.sin(this.t*1.7+m.fase)*0.0006)*100).toFixed(1), Y=((m.p.y+Math.cos(this.t*1.3+m.fase)*0.0006)*100).toFixed(1);
+        const txt='T'+m.id+' x'+(X>=0?'+':'')+X+' y'+(Y>=0?'+':'')+Y, tw=g.measureText(txt).width+8;
+        // posición preferida: la última que tuvo (estable); si choca, prueba alrededor del punto
+        const ops=[]; for(const d of [16,30,46]) for(const [ox,oy] of [[1,-1],[1,1],[-1,-1],[-1,1],[1,0],[-1,0]]) ops.push([ox,oy,d]);
+        if(m.op) ops.unshift(m.op);
+        let r=null;
+        for(const op of ops){ const [ox,oy,d]=op; const x=ox>0?m.sx+d:ox<0?m.sx-d-tw:m.sx-tw/2, y=m.sy+oy*d*0.7-bh/2;
+          const cand={x,y,w:tw,h:bh}; if(x<2||y<2||x+tw>W-2||y+bh>H-2) continue; if(!choca(cand)){ r=cand; m.op=op; break; } }
+        if(!r) continue;                                    // sin lugar libre: esta lectura espera al próximo cuadro
+        ocupado.push(r);
+        // suavizado: la etiqueta se desliza hacia su lugar, no salta
+        m.lx=r.x; m.ly=r.y;
+        const ax=m.lx<m.sx?m.lx+tw:m.lx, ay=m.ly+bh/2;
+        g.globalAlpha=a*0.6; g.strokeStyle='#fff'; g.lineWidth=0.7; g.beginPath(); g.moveTo(m.sx,m.sy); g.lineTo(ax,ay); g.stroke();
+        g.globalAlpha=a*0.8; g.fillStyle='#000'; g.fillRect(m.lx,m.ly,tw,bh);
+        g.globalAlpha=a; g.fillStyle='#fff'; g.fillRect(m.lx<m.sx?m.lx+tw-1:m.lx,m.ly,1,bh);
+        g.fillStyle='rgba(255,255,255,0.95)'; g.fillText(txt,m.lx+4,m.ly+bh/2+0.5); }
+      // retículas encima de todo
+      g.globalAlpha=a; g.strokeStyle='#fff'; g.lineWidth=1;
+      for(const m of vis){ const r=5+Math.sin(this.t*2.2+m.fase)*1, e2=2.5;
+        [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([qx,qy])=>{ g.beginPath(); g.moveTo(m.sx+qx*r,m.sy+qy*(r-e2)); g.lineTo(m.sx+qx*r,m.sy+qy*r); g.lineTo(m.sx+qx*(r-e2),m.sy+qy*r); g.stroke(); });
+        g.fillStyle='#fff'; g.fillRect(m.sx-0.75,m.sy-0.75,1.5,1.5); }
+      g.globalAlpha=1;
     },
     start(){ clearTimeout(this._lostT); this.cargar(); if(this.running) return; this.running=true; this.t=0; this.orden=0; this.energia=0.9; this._prev=null; this._suave=null; if(this.pts) this.pts.visible=true; },
     reset(){ this.running=false; if(this.pts) this.pts.visible=false; if(this.hud) this.hud.getContext('2d').clearRect(0,0,this.hud.width,this.hud.height); },
@@ -2461,8 +2477,11 @@
       const intro=Math.min(1,this.t/d.arma); this.orden+=(meta*intro-this.orden)*Math.min(1,st*1.5);
       let k=+window.hzCalor; if(!isFinite(k)) k=0.5; this.u.uCerca.value+=(k-this.u.uCerca.value)*Math.min(1,st*2);
       this.u.uOrden.value=this.orden; this.u.uTime.value=this.t;
+      if(d.genera){ let kc=+window.hzCalor; if(!isFinite(kc)) kc=0.5; if(typeof window.hzForzarGen==='number') kc=window.hzForzarGen;
+        const meta=Math.min(1,Math.max(0,(kc-d.genDesde)/(d.genHasta-d.genDesde)));
+        this.u.uGen.value+=(meta-this.u.uGen.value)*Math.min(1,st*(meta>this.u.uGen.value?0.9:0.5)); }
       this.tt=(this.tt||0)+st; this.u.uTermo.value=d.termo*Math.min(1,Math.max(0,(this.tt-d.termoEspera)/d.termoDura));   // tiempo acumulado: no se reinicia al perder la tarjeta   // lentamente, hacia la cámara térmica
-      if(this.marcas){ const a=Math.min(1,this.t/1.5);   // siempre visibles mientras la tarjeta está a la vista
+      if(this.marcas){ const a=Math.min(1,this.t/1.5)*Math.min(1,Math.max(0,(this.u.uGen.value-0.15)/0.35));   // visibles mientras se ve la tarjeta, a medida que la nube se genera
         this.dibujarRadar(a); }
       window.hzNubeDis=window.hzCoralDis=1-this.orden;
       const r=this.el.sceneEl.renderer; if(r) this.u.uViewH.value=r.getContext().drawingBufferHeight;

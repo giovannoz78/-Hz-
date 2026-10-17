@@ -39,7 +39,7 @@ window.HZ = {
   // vista: 'pie' para la escena sobre el borde inferior de la tarjeta y la saca hacia quien mira,
   // así apuntando de frente ya se ve de costado, en volumen. inclina: 90 = totalmente de pie, 60 = un poco recostada.
   // 'plana' la deja acostada sobre la página (hay que inclinar el teléfono para verla de costado).
-  vista:   { vista: 'pie', inclina: 72 },
+  vista:   { vista: 'plana', inclina: 72 },   // plana: cada nube apoyada sobre el trigger, al tamaño de la imagen
   colores: { tinta: '#FFFFFF', fondo: '#000000', puntos: '#FFFFFF' },   // textos y puntitos de la pantalla de carga
 
   escenas: [
