@@ -2462,7 +2462,7 @@
       let k=+window.hzCalor; if(!isFinite(k)) k=0.5; this.u.uCerca.value+=(k-this.u.uCerca.value)*Math.min(1,st*2);
       this.u.uOrden.value=this.orden; this.u.uTime.value=this.t;
       this.u.uTermo.value=d.termo*Math.min(1,Math.max(0,(this.t-d.termoEspera)/d.termoDura));   // lentamente, hacia la cámara térmica
-      if(this.marcas){ const a=Math.min(1,Math.max(0,(this.u.uTermo.value-0.25)/0.35))*Math.min(1,Math.max(0,(this.orden-0.45)/0.35));   // con la lectura térmica y la forma armada
+      if(this.marcas){ const a=Math.min(1,this.t/1.5);   // siempre visibles mientras la tarjeta está a la vista
         this.dibujarRadar(a); }
       window.hzNubeDis=window.hzCoralDis=1-this.orden;
       const r=this.el.sceneEl.renderer; if(r) this.u.uViewH.value=r.getContext().drawingBufferHeight;
