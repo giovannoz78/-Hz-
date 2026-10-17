@@ -2307,7 +2307,7 @@
   AFRAME.registerComponent('nube',{
     schema:{ src:{default:'./assets/coral.bin'}, tamano:{default:1.0}, punto:{default:0.0042}, arma:{default:5.0}, brillo:{default:1.15},
       ola:{default:0}, olaVel:{default:0.35}, olaLargo:{default:1.0}, viento:{default:0}, giro:{default:0}, giroK:{default:0}, giroS:{default:0},
-      base:{default:0.28}, memoria:{default:5}, flujo:{default:1.0}, termo:{default:1.0}, termoEspera:{default:6}, termoDura:{default:28}, radar:{default:9} },
+      base:{default:0.28}, memoria:{default:5}, flujo:{default:1.0}, termo:{default:1.0}, termoEspera:{default:6}, termoDura:{default:28}, radar:{default:6} },
     init(){
       const T=AFRAME.THREE,d=this.data;
       this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
@@ -2391,11 +2391,10 @@
         if(d.radar>0) this.armarRadar(P,col,n);
       }).catch(e=>{ this.cargando=false; console.warn('[Hz] no se pudo leer la nube',d.src,e); });
     },
-    // RADAR: marcas de seguimiento sobre puntos de la nube (las grietas más claras, repartidas por la forma),
-    // con retícula, línea guía y la posición X / Y en vivo, como la lectura de un instrumento.
+    // RADAR: lectura tipo instrumento en una capa fija sobre la pantalla (tamaño constante, nunca se pisan).
+    // Cada marca sigue un punto de grieta de la nube; la etiqueta va en una columna al costado con su X / Y en vivo.
     armarRadar(P,col,n){
       const T=AFRAME.THREE, K=this.data.radar;
-      // candidatos: los puntos más claros; de ahí, los más separados entre sí
       const cand=[]; for(let i=0;i<n;i+=7){ const l=col[i*4]*0.3+col[i*4+1]*0.55+col[i*4+2]*0.15; cand.push([l,i]); }
       cand.sort((a,b)=>b[0]-a[0]); const top=cand.slice(0,Math.max(K*40,400)).map(c=>c[1]);
       const sel=[top[0]];
@@ -2403,45 +2402,49 @@
         for(const i of top){ let dm=1e9; for(const j of sel){ const dx=P[i*3]-P[j*3], dy=P[i*3+1]-P[j*3+1], dz=P[i*3+2]-P[j*3+2]; dm=Math.min(dm,dx*dx+dy*dy+dz*dz); }
           if(dm>bd){ bd=dm; best=i; } }
         sel.push(best); }
-      this.radar=new T.Group(); this.marcas=[];
-      const P2=(window.HZ&&HZ.paleta)||{}, capa=P2.modo==='glow';
-      // retícula: un cuadrado abierto en las esquinas con un punto central
-      const rc=document.createElement('canvas'); rc.width=rc.height=64; const rx=rc.getContext('2d');
-      rx.strokeStyle='#fff'; rx.lineWidth=3; const e=14;
-      [[4,4,1,1],[60,4,-1,1],[4,60,1,-1],[60,60,-1,-1]].forEach(([x,y,sx,sy])=>{ rx.beginPath(); rx.moveTo(x+sx*e,y); rx.lineTo(x,y); rx.lineTo(x,y+sy*e); rx.stroke(); });
-      rx.fillStyle='#fff'; rx.fillRect(30,30,4,4);
-      const rtex=new T.CanvasTexture(rc);
-      const lg=new T.BufferGeometry(); const lp=new Float32Array(K*6); lg.setAttribute('position',new T.BufferAttribute(lp,3));
-      const lin=new T.LineSegments(lg,new T.LineBasicMaterial({color:0xffffff,transparent:true,opacity:0,depthTest:false}));
-      lin.frustumCulled=false; lin.renderOrder=20; if(capa) lin.layers.set(2); this.radar.add(lin); this.radarLin=lin;
-      sel.forEach((i,k)=>{
-        const x=P[i*3], y=P[i*3+1], z=P[i*3+2];
-        const ret=new T.Sprite(new T.SpriteMaterial({map:rtex,transparent:true,opacity:0,depthTest:false,color:0xffffff}));
-        ret.scale.set(0.05,0.05,1); ret.position.set(x,y,z); ret.renderOrder=21;
-        const c=document.createElement('canvas'); c.width=256; c.height=72; const tex=new T.CanvasTexture(c);
-        const lab=new T.Sprite(new T.SpriteMaterial({map:tex,transparent:true,opacity:0,depthTest:false}));
-        const ox=(x>=0?1:-1)*0.08, oz=0.05; lab.position.set(x+ox+(x>=0?0.1:-0.1),y,z+oz); lab.scale.set(0.2,0.056,1); lab.renderOrder=22;
-        lp.set([x,y,z,x+ox,y,z+oz],k*6);
-        if(capa){ ret.layers.set(2); lab.layers.set(2); }
-        this.radar.add(ret,lab);
-        this.marcas.push({x,y,z,ret,lab,c,tex,id:('00'+(k+1)).slice(-2),fase:Math.random()*6.28});
-      });
-      lg.attributes.position.needsUpdate=true;
-      this.el.object3D.add(this.radar); this._radarT=0;
+      this.marcas=sel.map((i,k)=>({p:new T.Vector3(P[i*3],P[i*3+1],P[i*3+2]),id:('0'+(k+1)).slice(-2),fase:Math.random()*6.28}));
+      if(!window.__hzRadar){ const c=document.createElement('canvas'); c.style.cssText='position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:99998';
+        document.body.appendChild(c); window.__hzRadar=c; }
+      this.hud=window.__hzRadar; this._w=new T.Vector3(); this._a=0;
     },
-    escribirRadar(){
-      for(const m of this.marcas){
-        // lectura en vivo: la posición más un temblor mínimo de instrumento
-        const jx=Math.sin(this.t*1.7+m.fase)*0.0006, jy=Math.cos(this.t*1.3+m.fase)*0.0006;
-        const X=((m.x+jx)*100).toFixed(2), Y=((m.y+jy)*100).toFixed(2);
-        const g=m.c.getContext('2d'); g.clearRect(0,0,256,72); g.fillStyle='rgba(0,0,0,0.55)'; g.fillRect(0,0,256,72); g.fillStyle='rgba(255,255,255,0.9)'; g.fillRect(0,0,3,72);
-        g.font='600 24px "SF Mono",Menlo,Consolas,monospace'; g.fillStyle='rgba(255,255,255,0.95)'; g.textBaseline='top';
-        g.fillText('T'+m.id+'  X '+(X>=0?'+':'')+X,12,6);
-        g.fillStyle='rgba(255,255,255,0.75)'; g.fillText('     Y '+(Y>=0?'+':'')+Y,12,38);
-        m.tex.needsUpdate=true; }
+    dibujarRadar(a){
+      const c=this.hud, dpr=Math.min(2,window.devicePixelRatio||1), W=innerWidth, H=innerHeight;
+      if(c.width!==W*dpr||c.height!==H*dpr){ c.width=W*dpr; c.height=H*dpr; }
+      const g=c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+      if(a<0.01||!this.pts||!this.pts.visible) return;
+      const cam=this.el.sceneEl.camera; if(!cam) return;
+      // posición en pantalla de cada marca
+      const L=[],R=[];
+      for(const m of this.marcas){ this._w.copy(m.p); this.pts.localToWorld(this._w); this._w.project(cam);
+        if(this._w.z>1||Math.abs(this._w.x)>1.1||Math.abs(this._w.y)>1.1) continue;
+        const sx=(this._w.x*0.5+0.5)*W, sy=(-this._w.y*0.5+0.5)*H;
+        (sx<W/2?L:R).push({m,sx,sy}); }
+      const fs=10.5, lh=30, mg=12;
+      g.font='500 '+fs+'px "SF Mono",Menlo,Consolas,monospace'; g.textBaseline='middle';
+      const colocar=(arr,izq)=>{ arr.sort((a,b)=>a.sy-b.sy); let y=-1e9;
+        for(const e of arr){ e.ly=Math.max(e.sy,y+lh); y=e.ly; }
+        const exceso=y-(H-40); if(exceso>0) arr.forEach(e=>e.ly-=exceso);
+        for(const e of arr){ const {m,sx,sy,ly}=e, lx=izq?mg:W-mg;
+          const X=((m.p.x+Math.sin(this.t*1.7+m.fase)*0.0006)*100).toFixed(2), Y=((m.p.y+Math.cos(this.t*1.3+m.fase)*0.0006)*100).toFixed(2);
+          const t1='T'+m.id+' X'+(X>=0?'+':'')+X, t2='    Y'+(Y>=0?'+':'')+Y, tw=Math.max(g.measureText(t1).width,g.measureText(t2).width);
+          const ex=izq?lx+tw+6:lx-tw-6;
+          g.globalAlpha=a*0.7; g.strokeStyle='#fff'; g.lineWidth=0.75;
+          g.beginPath(); g.moveTo(ex,ly); g.lineTo(sx,sy); g.stroke();
+          // retícula de esquinas
+          const r=6+Math.sin(this.t*2.2+m.fase)*1.2, e2=3;
+          g.globalAlpha=a; g.lineWidth=1;
+          [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([qx,qy])=>{ g.beginPath(); g.moveTo(sx+qx*r,sy+qy*(r-e2)); g.lineTo(sx+qx*r,sy+qy*r); g.lineTo(sx+qx*(r-e2),sy+qy*r); g.stroke(); });
+          g.fillStyle='#fff'; g.fillRect(sx-0.75,sy-0.75,1.5,1.5);
+          // texto con sombra para leerse sobre cualquier fondo
+          g.globalAlpha=a*0.82; g.fillStyle='#000'; g.fillRect(izq?lx-4:lx-tw-4,ly-13,tw+8,26); g.globalAlpha=a;
+          g.fillStyle='#fff'; g.fillRect(izq?lx-4:lx+3,ly-13,1,26);
+          g.textAlign=izq?'left':'right'; g.shadowColor='rgba(0,0,0,0.9)'; g.shadowBlur=0;
+          g.fillStyle='rgba(255,255,255,0.95)'; g.fillText(t1,lx,ly-6); g.fillStyle='rgba(255,255,255,0.7)'; g.fillText(t2,lx,ly+7);
+          g.shadowBlur=0; } };
+      colocar(L,true); colocar(R,false); g.globalAlpha=1;
     },
     start(){ clearTimeout(this._lostT); this.cargar(); if(this.running) return; this.running=true; this.t=0; this.orden=0; this.energia=0.9; this._prev=null; this._suave=null; if(this.pts) this.pts.visible=true; },
-    reset(){ this.running=false; if(this.pts) this.pts.visible=false; },
+    reset(){ this.running=false; if(this.pts) this.pts.visible=false; if(this.hud) this.hud.getContext('2d').clearRect(0,0,this.hud.width,this.hud.height); },
     tick(t,dt){
       if(!this.running){ if(this.anchor.components&&this.anchor.components['mindar-image-target']&&this.anchor.object3D.visible) this.start(); if(!this.running) return; }
       if(!this.pts) return; if(!this.pts.visible) this.pts.visible=true;
@@ -2459,11 +2462,8 @@
       let k=+window.hzCalor; if(!isFinite(k)) k=0.5; this.u.uCerca.value+=(k-this.u.uCerca.value)*Math.min(1,st*2);
       this.u.uOrden.value=this.orden; this.u.uTime.value=this.t;
       this.u.uTermo.value=d.termo*Math.min(1,Math.max(0,(this.t-d.termoEspera)/d.termoDura));   // lentamente, hacia la cámara térmica
-      if(this.marcas){ const a=Math.min(1,Math.max(0,(this.u.uTermo.value-0.25)/0.35))*Math.min(1,this.orden*1.3);   // el radar aparece con la lectura térmica
-        this.radar.visible=this.pts.visible;
-        this.marcas.forEach((m,k)=>{ const p=0.75+0.25*Math.sin(this.t*2.2+m.fase); m.ret.material.opacity=a*p; m.lab.material.opacity=a*0.95; m.ret.material.rotation=Math.sin(this.t*0.5+m.fase)*0.05; });
-        this.radarLin.material.opacity=a*0.55;
-        this._radarT-=st; if(this._radarT<=0&&a>0){ this.escribirRadar(); this._radarT=0.35; } }
+      if(this.marcas){ const a=Math.min(1,Math.max(0,(this.u.uTermo.value-0.25)/0.35))*Math.min(1,Math.max(0,(this.orden-0.45)/0.35));   // con la lectura térmica y la forma armada
+        this.dibujarRadar(a); }
       window.hzNubeDis=window.hzCoralDis=1-this.orden;
       const r=this.el.sceneEl.renderer; if(r) this.u.uViewH.value=r.getContext().drawingBufferHeight;
     }
