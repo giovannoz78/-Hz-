@@ -17,7 +17,7 @@ window.HZ = {
   guia2:     'Movete alrededor de la imagen:\ncada escena tiene volumen.',
 
   // texto en pantalla mientras se ve una tarjeta ('' = sin texto)
-  aviso:     '',
+  aviso:     'Movete alrededor de la imagen',
 
   // archivo de triggers que genera preparar.html
   mind: './mindar/targets.mind',
