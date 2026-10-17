@@ -2308,13 +2308,13 @@
   AFRAME.registerComponent('nube',{
     schema:{ src:{default:'./assets/coral.bin'}, tamano:{default:1.0}, punto:{default:0.0042}, arma:{default:5.0}, brillo:{default:1.15},
       ola:{default:0}, olaVel:{default:0.35}, olaLargo:{default:1.0}, viento:{default:0}, giro:{default:0}, giroK:{default:0}, giroS:{default:0},
-      base:{default:0.28}, memoria:{default:5}, flujo:{default:1.0}, termo:{default:1.0}, termoEspera:{default:6}, termoDura:{default:28}, radar:{default:24}, ajusta:{default:true}, relieve:{default:1.6}, genera:{default:true}, genDesde:{default:0.02}, genHasta:{default:0.45}, luz:{default:1.0}, luzVel:{default:0.16} },
+      base:{default:0.28}, memoria:{default:5}, flujo:{default:1.0}, termo:{default:1.0}, termoEspera:{default:6}, termoDura:{default:28}, radar:{default:24}, ajusta:{default:true}, relieve:{default:1.6}, profundo:{default:0.16}, morphEspera:{default:2}, morphDura:{default:30}, morphMov:{default:0.3}, genera:{default:true}, genDesde:{default:0.02}, genHasta:{default:0.45}, luz:{default:1.0}, luzVel:{default:0.16} },
     init(){
       const T=AFRAME.THREE,d=this.data;
       this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
       this.u={uTime:{value:0},uOrden:{value:0},uCerca:{value:0.5},uViewH:{value:800},uPunto:{value:d.punto},uBrillo:{value:d.brillo},uFlujo:{value:d.flujo},
         uOla:{value:d.ola},uOlaVel:{value:d.olaVel},uOlaLargo:{value:d.olaLargo},uViento:{value:d.viento},uGiro:{value:d.giro},uGiroK:{value:d.giroK},uGiroS:{value:d.giroS},
-        uTermo:{value:0},uLo:{value:0.2},uHi:{value:0.8},uGen:{value:d.genera?0:1},uLuz:{value:d.luz},uLuzVel:{value:d.luzVel}};
+        uTermo:{value:0},uLo:{value:0.2},uHi:{value:0.8},uGen:{value:d.genera?0:1},uMorph:{value:0},uLuz:{value:d.luz},uLuzVel:{value:d.luzVel}};
       this.t=0; this.running=false; this.pts=null; this.cargando=false; this.energia=0; this.orden=0;
       this._c=new T.Vector3(); this._d=new T.Vector3(); this._prev=null;
       this.anchor.addEventListener('targetFound',()=>this.start());
@@ -2324,7 +2324,10 @@
       // se descarga recién cuando aparece su tarjeta
       if(this.cargando) return; this.cargando=true;
       const T=AFRAME.THREE,d=this.data;
-      fetch(d.src).then(r=>{ if(!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then(buf=>{
+      const mi0=(this.anchor.id||'').match(/(\d+)$/), DD=window.HZ_DATOS||{};
+      this._idx=mi0?mi0[1]:null;
+      const imgP=new Promise(res=>{ const src=DD.miniaturas&&this._idx!=null&&DD.miniaturas[this._idx]; if(!src) return res(null); const im=new Image(); im.onload=()=>res(im); im.onerror=()=>res(null); im.src=src; });
+      fetch(d.src).then(r=>{ if(!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then(buf=>imgP.then(img=>[buf,img])).then(([buf,img])=>{
         const dv=new DataView(buf), n=dv.getUint32(0,true), E=dv.getFloat32(4,true);
         const qi=new Int16Array(buf,8,n*3), col=new Uint8Array(buf,8+n*6,n*4);
         const P=new Float32Array(n*3), R=new Float32Array(n);
@@ -2337,14 +2340,32 @@
           for(let i=0;i<n;i++){ const x=P[i*3],y=P[i*3+1],z=P[i*3+2]; if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; if(z<z0)z0=z; }
           const mi=(this.anchor.id||'').match(/(\d+)$/), DA=window.HZ_DATOS&&HZ_DATOS.aspectos;
           const asp=(mi&&DA&&+DA[mi[1]])||1, k=Math.min(1/Math.max(1e-6,x1-x0),asp/Math.max(1e-6,y1-y0)), cx=(x0+x1)/2, cy=(y0+y1)/2;
-          for(let i=0;i<n;i++){ P[i*3]=(P[i*3]-cx)*k; P[i*3+1]=(P[i*3+1]-cy)*k; P[i*3+2]=(P[i*3+2]-z0)*k*d.relieve; } }
+          for(let i=0;i<n;i++){ P[i*3]=(P[i*3]-cx)*k; P[i*3+1]=(P[i*3+1]-cy)*k; P[i*3+2]=(P[i*3+2]-z0)*k; }
+          // el volumen sale de la página pero nunca más que 'profundo' (fracción del ancho): así la nube queda sobre la imagen
+          let zm=1e-6; for(let i=0;i<n;i++) zm=Math.max(zm,P[i*3+2]); const kz=d.profundo/zm; for(let i=0;i<n;i++) P[i*3+2]*=kz; }
+        // INICIO: cada punto arranca sobre la imagen del trigger, con su color; después viaja a su lugar en la nube
+        const S=new Float32Array(n*3), SC=new Uint8Array(n*3);
+        { const mi=(this.anchor.id||'').match(/(\d+)$/), DA=window.HZ_DATOS&&HZ_DATOS.aspectos, asp=(mi&&DA&&+DA[mi[1]])||1;
+          if(img){ const cw=img.naturalWidth, ch=img.naturalHeight, cv=document.createElement('canvas'); cv.width=cw; cv.height=ch; const cx2=cv.getContext('2d'); cx2.drawImage(img,0,0);
+            const px=cx2.getImageData(0,0,cw,ch).data, M=cw*ch, cdf=new Float32Array(M); let acc=0;
+            for(let j=0;j<M;j++){ const l=(px[j*4]*0.3+px[j*4+1]*0.55+px[j*4+2]*0.15)/255; acc+=0.04+Math.pow(l,1.3); cdf[j]=acc; }
+            const smp=new Array(n);
+            for(let i=0;i<n;i++){ const u=Math.random()*acc; let lo=0,hi=M-1; while(lo<hi){ const mid=(lo+hi)>>1; if(cdf[mid]<u) lo=mid+1; else hi=mid; }
+              const yy=(lo/cw)|0, xx=lo-yy*cw; smp[i]=[(xx+Math.random())/cw-0.5,(0.5-(yy+Math.random())/ch)*asp,lo]; }
+            // emparejar por franjas: cada zona de la imagen va a la zona equivalente de la nube (la deformación se lee ordenada)
+            const key=(x,y)=>Math.round((x+0.5)*28)*10+y;
+            const ti=Array.from({length:n},(_,i)=>i).sort((a,b)=>key(P[a*3],P[a*3+1])-key(P[b*3],P[b*3+1]));
+            smp.sort((a,b)=>key(a[0],a[1])-key(b[0],b[1]));
+            for(let k2=0;k2<n;k2++){ const i=ti[k2], sm=smp[k2]; S[i*3]=sm[0]; S[i*3+1]=sm[1]; S[i*3+2]=0.002; SC[i*3]=px[sm[2]*4]; SC[i*3+1]=px[sm[2]*4+1]; SC[i*3+2]=px[sm[2]*4+2]; }
+          } else { for(let i=0;i<n*3;i++) S[i]=P[i]; for(let i=0;i<n;i++){ SC[i*3]=col[i*4]; SC[i*3+1]=col[i*4+1]; SC[i*3+2]=col[i*4+2]; } } }
+        this.S=S;
         for(let i=0;i<n;i++) R[i]=Math.random();
         const g=new T.BufferGeometry();
         { const Ls=[]; for(let i=0;i<n;i+=Math.max(1,(n/20000)|0)) Ls.push((col[i*4]*0.3+col[i*4+1]*0.55+col[i*4+2]*0.15)/255); Ls.sort((a,b)=>a-b);
           this.u.uLo.value=Ls[(Ls.length*0.12)|0]; this.u.uHi.value=Ls[(Ls.length*0.96)|0]; }   // rango de luz de esta nube
-        g.setAttribute('position',new T.BufferAttribute(P,3)); g.setAttribute('aCol',new T.BufferAttribute(col,4,true)); g.setAttribute('aR',new T.BufferAttribute(R,1));
+        g.setAttribute('position',new T.BufferAttribute(P,3)); g.setAttribute('aCol',new T.BufferAttribute(col,4,true)); g.setAttribute('aR',new T.BufferAttribute(R,1)); g.setAttribute('aS',new T.BufferAttribute(S,3)); g.setAttribute('aSC',new T.BufferAttribute(SC,3,true));
         this.pts=new T.Points(g,new T.ShaderMaterial({uniforms:this.u,transparent:false,depthWrite:true,depthTest:true,
-          vertexShader:`attribute vec4 aCol; attribute float aR;
+          vertexShader:`attribute vec4 aCol; attribute float aR; attribute vec3 aS; attribute vec3 aSC; uniform float uMorph;
             uniform float uTime,uOrden,uCerca,uViewH,uPunto,uBrillo,uFlujo,uOla,uOlaVel,uOlaLargo,uViento,uGiro,uGiroK,uGiroS,uTermo,uLo,uHi,uGen,uLuz,uLuzVel; varying vec3 vC;
             // ruido simplex 3D (Ashima Arts, MIT)
             vec3 m289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;} vec4 m289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
@@ -2362,7 +2383,8 @@
               return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3))); }
             vec3 campo(vec3 p){ return vec3(sn(p),sn(p+vec3(31.4,7.1,0.0)),sn(p+vec3(0.0,67.1,13.7))); }
             void main(){
-              vec3 p=position; float s=aCol.a, r=aR;
+              float mm=smoothstep(0.0,1.0,clamp(uMorph*1.6-aR*0.6,0.0,1.0));   // 0 = la imagen del trigger, 1 = la nube
+              vec3 p=mix(aS,position,mm); float s=aCol.a*mm, r=aR;
               if(uGiro!=0.0){ float w=mix(1.0,1.0-s,uGiroS); float rr=max(length(p.xy),0.03);
                 float a0=uTime*uGiro*w*pow(rr/0.2,-uGiroK); float c0=cos(a0),s0=sin(a0); p.xy=mat2(c0,-s0,s0,c0)*p.xy; }
               if(uViento>0.0){ float h=p.z*p.z*uViento; p.x+=sin(uTime*1.3+position.y*9.0+r)*h*0.06; p.y+=cos(uTime*1.1+position.x*7.0)*h*0.035; }
@@ -2370,15 +2392,15 @@
               // orden local: la forma se deshace por zonas, no toda a la vez
               float zona=sn(p*3.2+vec3(0.0,0.0,uTime*0.06))*0.5+sn(p*9.0-uTime*0.04)*0.18;
               float o=uOrden+zona*0.55-r*0.12;
-              float dd=smoothstep(0.42,0.02,o);                                   // 0 = en su lugar, 1 = humo
-              float frente=exp(-pow((o-0.3)/0.07,2.0))*(1.0-dd*0.5);             // borde incandescente donde el orden se rehace
+              float dd=smoothstep(0.42,0.02,o)*mm;                                   // 0 = en su lugar, 1 = humo
+              float frente=exp(-pow((o-0.3)/0.07,2.0))*(1.0-dd*0.5)*mm;             // borde incandescente donde el orden se rehace
               // humo: el punto se deja llevar por un campo de flujo plegado sobre sí mismo
               float ag=uFlujo*(0.8+uCerca*1.4);
               vec3 w1=campo(p*2.4+vec3(0.0,0.0,-uTime*0.09*ag));
               vec3 w2=campo(p*5.0+w1*0.6+vec3(uTime*0.05*ag,0.0,0.0));
               vec3 q=p+(w1*0.10+w2*0.05)*dd*(0.6+r)+vec3(0.0,0.0,dd*dd*(0.05+0.18*r));
               q+=w2*0.0025;                                                        // respiración leve aun en orden
-              vec3 base=pow(aCol.rgb,vec3(0.85))*uBrillo;
+              vec3 base=mix(aSC*1.05,pow(aCol.rgb,vec3(0.85)),mm)*uBrillo;
               // CÁMARA TÉRMICA: de a poco la nube pasa de su color a un mapa de calor. Las grietas y aristas (lo más claro de
               // cada nube) se calientan; las caras planas quedan frías. El cambio avanza por zonas, no todo junto.
               float lum=dot(aCol.rgb,vec3(0.3,0.55,0.15));
@@ -2389,12 +2411,12 @@
                       calor<0.8?mix(vec3(0.55,0.95,0.2),vec3(1.0,0.85,0.1),(calor-0.6)/0.2):
                                 mix(vec3(1.0,0.85,0.1),vec3(0.95,0.15,0.05),(calor-0.8)/0.2);
               float zt=clamp(uTermo*1.35-(sn(position*2.2)*0.5+0.5)*0.35,0.0,1.0);   // avanza por zonas
-              base=mix(base,tc*uBrillo,smoothstep(0.0,1.0,zt));
+              base=mix(base,tc*uBrillo,smoothstep(0.0,1.0,zt)*mm);
               vC=base*(1.0-dd*0.45)+frente*(base*0.9+0.12)+ola*vec3(1.0,0.95,0.85);
               // LUZ EN LAS GRIETAS: una franja avanza despacio por la imagen y solo enciende las grietas que cruza,
               // así la luz se ve correr por ellas. Sin halo: brillan los propios puntos.
-              float grieta=smoothstep(0.45,0.8,calor);
-              float fase=dot(position.xy,vec2(0.78,0.62))*1.1+sn(position*2.6)*0.12;
+              float grieta=mix(smoothstep(0.62,0.9,dot(aSC,vec3(0.3,0.55,0.15))),smoothstep(0.45,0.8,calor),mm);   // grietas de la imagen al inicio, de la nube al final
+              float fase=dot(p.xy,vec2(0.78,0.62))*1.1+sn(vec3(p.xy,0.0)*2.6)*0.12;
               float fl=fract(fase-uTime*uLuzVel);
               float luzG=uLuz*grieta*(exp(-pow((fl-0.5)/0.07,2.0))+0.6*exp(-pow((fract(fl+0.5)-0.5)/0.05,2.0)))*(1.0-dd*0.5);
               vC=mix(vC,vec3(1.0,0.97,0.88)*2.2,clamp(luzG,0.0,1.0));
@@ -2422,7 +2444,7 @@
         for(const i of top){ let dm=1e9; for(const j of sel){ const dx=P[i*3]-P[j*3], dy=P[i*3+1]-P[j*3+1], dz=P[i*3+2]-P[j*3+2]; dm=Math.min(dm,dx*dx+dy*dy+dz*dz); }
           if(dm>bd){ bd=dm; best=i; } }
         sel.push(best); }
-      this.marcas=sel.map((i,k)=>({p:new T.Vector3(P[i*3],P[i*3+1],P[i*3+2]),id:('0'+(k+1)).slice(-2),fase:Math.random()*6.28}));
+      this.marcas=sel.map((i,k)=>({p:new T.Vector3(P[i*3],P[i*3+1],P[i*3+2]),s:new T.Vector3(this.S[i*3],this.S[i*3+1],this.S[i*3+2]),id:('0'+(k+1)).slice(-2),fase:Math.random()*6.28}));
       if(!window.__hzRadar){ const c=document.createElement('canvas'); c.style.cssText='position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:99998';
         document.body.appendChild(c); window.__hzRadar=c; }
       this.hud=window.__hzRadar; this._w=new T.Vector3(); this._a=0;
@@ -2439,7 +2461,8 @@
       // primero los puntos, para que ninguna etiqueta tape una retícula
       const vis=[];
       const gz=0.02+0.98*Math.min(1,Math.max(0,this.u.uGen.value*1.3-0.15));
-      for(const m of this.marcas){ this._w.copy(m.p); this._w.z*=gz; this.pts.localToWorld(this._w); this._w.project(cam);
+      const mmk=Math.min(1,Math.max(0,this.u.uMorph.value*1.6-0.3)); const mmE=mmk*mmk*(3-2*mmk);
+      for(const m of this.marcas){ this._w.copy(m.s).lerp(m.p,mmE); this._w.z*=gz; this.pts.localToWorld(this._w); this._w.project(cam);
         if(this._w.z>1||Math.abs(this._w.x)>1.05||Math.abs(this._w.y)>1.05){ m.sx=null; continue; }
         m.sx=(this._w.x*0.5+0.5)*W; m.sy=(-this._w.y*0.5+0.5)*H; vis.push(m); ocupado.push({x:m.sx-7,y:m.sy-7,w:14,h:14}); }
       for(const m of vis){
@@ -2468,7 +2491,7 @@
       g.globalAlpha=1;
     },
     start(){ clearTimeout(this._lostT); this.cargar(); if(this.running) return; this.running=true; this._prev=null; this._suave=null;
-      if(!this._visto){ this._visto=true; this.t=0; this.orden=0; this.energia=0.9; } else this.energia=Math.max(this.energia,0.9);   // al reencontrar la tarjeta sigue donde estaba
+      if(!this._visto){ this._visto=true; this.t=0; this.orden=0; this.energia=0.3; } else this.energia=Math.max(this.energia,0.9);   // al reencontrar la tarjeta sigue donde estaba
       if(this.pts) this.pts.visible=true; },
     reset(){ this.running=false; if(this.pts) this.pts.visible=false; if(this.hud) this.hud.getContext('2d').clearRect(0,0,this.hud.width,this.hud.height); },
     tick(t,dt){
@@ -2487,6 +2510,9 @@
       const intro=Math.min(1,this.t/d.arma); this.orden+=(meta*intro-this.orden)*Math.min(1,st*1.5);
       let k=+window.hzCalor; if(!isFinite(k)) k=0.5; this.u.uCerca.value+=(k-this.u.uCerca.value)*Math.min(1,st*2);
       this.u.uOrden.value=this.orden; this.u.uTime.value=this.t;
+      if((this.tt||0)>d.morphEspera){ const mov=Math.min(1,Math.max(0,(this.energia-0.35)/0.6));
+        this.morph=Math.min(1,(this.morph||0)+st*(1/d.morphDura+d.morphMov*mov)); }
+      this.u.uMorph.value=this.morph||0;
       if(d.genera){ let kc=+window.hzCalor; if(!isFinite(kc)) kc=0.5; if(typeof window.hzForzarGen==='number') kc=window.hzForzarGen;
         const meta=Math.min(1,Math.max(0,(kc-d.genDesde)/(d.genHasta-d.genDesde)));
         this.u.uGen.value+=(meta-this.u.uGen.value)*Math.min(1,st*(meta>this.u.uGen.value?0.9:0.5)); }
