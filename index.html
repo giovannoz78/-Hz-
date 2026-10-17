@@ -2308,7 +2308,7 @@
   AFRAME.registerComponent('nube',{
     schema:{ src:{default:'./assets/coral.bin'}, tamano:{default:1.0}, punto:{default:0.0042}, arma:{default:5.0}, brillo:{default:1.15},
       ola:{default:0}, olaVel:{default:0.35}, olaLargo:{default:1.0}, viento:{default:0}, giro:{default:0}, giroK:{default:0}, giroS:{default:0},
-      base:{default:0.28}, memoria:{default:5}, flujo:{default:1.0}, termo:{default:1.0}, termoEspera:{default:6}, termoDura:{default:28}, radar:{default:24}, ajusta:{default:true}, relieve:{default:1.6}, profundo:{default:0.16}, morphEspera:{default:2}, morphDura:{default:30}, morphMov:{default:0.3}, genera:{default:true}, genDesde:{default:0.02}, genHasta:{default:0.45}, luz:{default:1.0}, luzVel:{default:0.16} },
+      base:{default:1.0}, memoria:{default:5}, flujo:{default:1.0}, termo:{default:1.0}, termoEspera:{default:6}, termoDura:{default:28}, radar:{default:24}, ajusta:{default:true}, relieve:{default:1.6}, profundo:{default:0.16}, morphEspera:{default:2}, morphDura:{default:30}, morphMov:{default:0.3}, genera:{default:true}, genDesde:{default:0.02}, genHasta:{default:0.45}, luz:{default:1.0}, luzVel:{default:0.16} },
     init(){
       const T=AFRAME.THREE,d=this.data;
       this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
@@ -2335,14 +2335,10 @@
         // AJUSTE AL TRIGGER: la nube se escala y centra para ocupar exactamente el ancho o el alto de la imagen impresa,
         // apoyada sobre la página (z = 0 es el papel).
         if(d.ajusta){ let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9,z0=1e9;
-          // la nube está modelada de pie: su cara frontal (x, altura) pasa a ser el plano de la imagen y su espesor sale de la página
-          for(let i=0;i<n;i++){ const yy=P[i*3+1]; P[i*3+1]=P[i*3+2]; P[i*3+2]=-yy; }
+          // la nube queda de pie sobre la página, con su altura real (3D completo), y su ancho igual al ancho de la imagen
           for(let i=0;i<n;i++){ const x=P[i*3],y=P[i*3+1],z=P[i*3+2]; if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; if(z<z0)z0=z; }
-          const mi=(this.anchor.id||'').match(/(\d+)$/), DA=window.HZ_DATOS&&HZ_DATOS.aspectos;
-          const asp=(mi&&DA&&+DA[mi[1]])||1, k=Math.min(1/Math.max(1e-6,x1-x0),asp/Math.max(1e-6,y1-y0)), cx=(x0+x1)/2, cy=(y0+y1)/2;
-          for(let i=0;i<n;i++){ P[i*3]=(P[i*3]-cx)*k; P[i*3+1]=(P[i*3+1]-cy)*k; P[i*3+2]=(P[i*3+2]-z0)*k; }
-          // el volumen sale de la página pero nunca más que 'profundo' (fracción del ancho): así la nube queda sobre la imagen
-          let zm=1e-6; for(let i=0;i<n;i++) zm=Math.max(zm,P[i*3+2]); const kz=d.profundo/zm; for(let i=0;i<n;i++) P[i*3+2]*=kz; }
+          const k=d.relieve/Math.max(1e-6,x1-x0)/1.6, cx=(x0+x1)/2, cy=(y0+y1)/2;
+          for(let i=0;i<n;i++){ P[i*3]=(P[i*3]-cx)*k; P[i*3+1]=(P[i*3+1]-cy)*k; P[i*3+2]=(P[i*3+2]-z0)*k; } }
         // INICIO: cada punto arranca sobre la imagen del trigger, con su color; después viaja a su lugar en la nube
         const S=new Float32Array(n*3), SC=new Uint8Array(n*3);
         { const mi=(this.anchor.id||'').match(/(\d+)$/), DA=window.HZ_DATOS&&HZ_DATOS.aspectos, asp=(mi&&DA&&+DA[mi[1]])||1;
@@ -2354,7 +2350,7 @@
               const yy=(lo/cw)|0, xx=lo-yy*cw; smp[i]=[(xx+Math.random())/cw-0.5,(0.5-(yy+Math.random())/ch)*asp,lo]; }
             // emparejar por franjas: cada zona de la imagen va a la zona equivalente de la nube (la deformación se lee ordenada)
             const key=(x,y)=>Math.round((x+0.5)*28)*10+y;
-            const ti=Array.from({length:n},(_,i)=>i).sort((a,b)=>key(P[a*3],P[a*3+1])-key(P[b*3],P[b*3+1]));
+            const ti=Array.from({length:n},(_,i)=>i).sort((a,b)=>key(P[a*3],P[a*3+2])-key(P[b*3],P[b*3+2]));   // lo alto de la imagen sube a lo alto de la nube
             smp.sort((a,b)=>key(a[0],a[1])-key(b[0],b[1]));
             for(let k2=0;k2<n;k2++){ const i=ti[k2], sm=smp[k2]; S[i*3]=sm[0]; S[i*3+1]=sm[1]; S[i*3+2]=0.002; SC[i*3]=px[sm[2]*4]; SC[i*3+1]=px[sm[2]*4+1]; SC[i*3+2]=px[sm[2]*4+2]; }
           } else { for(let i=0;i<n*3;i++) S[i]=P[i]; for(let i=0;i<n;i++){ SC[i*3]=col[i*4]; SC[i*3+1]=col[i*4+1]; SC[i*3+2]=col[i*4+2]; } } }
