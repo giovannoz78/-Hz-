@@ -2408,23 +2408,21 @@
                                 mix(vec3(1.0,0.85,0.1),vec3(0.95,0.15,0.05),(calor-0.8)/0.2);
               float zt=clamp(uTermo*1.35-(sn(position*2.2)*0.5+0.5)*0.35,0.0,1.0);   // avanza por zonas
               base=mix(base,tc*uBrillo,smoothstep(0.0,1.0,zt)*mm);
-              float luminance=dot(base,vec3(0.2126,0.7152,0.0722));
-              base=mix(vec3(luminance)*vec3(0.77,0.91,1.0),base,0.48);
-              vC=base*(1.0-dd*0.45)+frente*base*0.12+ola*vec3(0.12,0.16,0.18);
+              vC=base*(1.0-dd*0.45)+frente*(base*0.9+0.12)+ola*vec3(1.0,0.95,0.85);
               // LUZ EN LAS GRIETAS: una franja avanza despacio por la imagen y solo enciende las grietas que cruza,
               // así la luz se ve correr por ellas. Sin halo: brillan los propios puntos.
               float grieta=mix(smoothstep(0.62,0.9,dot(aSC,vec3(0.3,0.55,0.15))),smoothstep(0.45,0.8,calor),mm);   // grietas de la imagen al inicio, de la nube al final
               float fase=dot(p.xy,vec2(0.78,0.62))*1.1+sn(vec3(p.xy,0.0)*2.6)*0.12;
               float fl=fract(fase-uTime*uLuzVel);
               float luzG=uLuz*grieta*(exp(-pow((fl-0.5)/0.07,2.0))+0.6*exp(-pow((fract(fl+0.5)-0.5)/0.05,2.0)))*(1.0-dd*0.5);
-              vC=mix(vC,vec3(0.70,0.82,0.88),clamp(luzG,0.0,1.0));
+              vC=mix(vC,vec3(1.0,0.97,0.88)*2.2,clamp(luzG,0.0,1.0));
               // GENERACIÓN POR CERCANÍA: lejos casi nada; al acercar el teléfono los puntos nacen sobre la imagen y crecen desde el papel
               float gk=clamp((uGen*1.15-r*0.9)/0.25,0.0,1.0);
               q.z*=mix(0.02,1.0,smoothstep(0.0,1.0,clamp(uGen*1.3-r*0.3,0.0,1.0)));
               vec4 mv=modelViewMatrix*vec4(q,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
-              gl_PointSize=gk*clamp(uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8+luzG*1.6)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),0.65,2.0);
+              gl_PointSize=gk*clamp(uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8+luzG*1.6)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,10.0);
               gl_Position=projectionMatrix*mv; }`,
-          fragmentShader:`precision mediump float; varying vec3 vC; void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25) discard; gl_FragColor=vec4(min(vC,vec3(0.86))*(1.0-e*1.2),1.0); }`}));
+          fragmentShader:`precision mediump float; varying vec3 vC; void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25) discard; gl_FragColor=vec4(vC*(1.0-e*1.2),1.0); }`}));
         this.pts.frustumCulled=false; this.pts.visible=this.running;
         const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.pts.layers.set(2); window.hzCapa2=true; }
         this.el.object3D.add(this.pts); this.t=0;
@@ -3566,15 +3564,6 @@
     const COLOR=/^(color|gold|hot|tint|light|idColor|rainGold|fogGold|splashGold|crossColor|neonColor|colorInner|colorOuter|palette)$/;
     const attr=(name,e,extra)=>{
       const o=Object.assign({},BASE[name]||{},extra||{},(e.opciones||{})[name]||{});
-      // Límites visuales aplicados después de la configuración externa.
-      if(name==='nube') Object.assign(o,{
-        punto:0.00125,brillo:0.72,termo:0,radar:0,luz:0.12,
-        ola:Math.min(Number(o.ola)||0,0.08),flujo:0.12,
-        giro:Math.min(Number(o.giro)||0,0.04),giroK:0,giroS:0,
-        viento:Math.min(Number(o.viento)||0,0.12),relieve:1.18,
-        base:1,arma:1.6,morphEspera:0.8,morphDura:8,morphMov:0,
-        genera:false
-      });
       return Object.keys(o).map(k=>k+': '+(COLOR.test(k)?HZC(String(o[k])):o[k])).join('; ');
     };
     const esc=v=>String(v).replace(/"/g,'&quot;');
