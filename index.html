@@ -2461,8 +2461,9 @@
         if(d.radar>0) this.armarRadar(P,col,n);
       }).catch(e=>{ this.cargando=false; console.warn('[Hz] no se pudo leer la nube',d.src,e); });
     },
-    // MANO: cada punto de la nube tiene un lugar sobre la mano (palma o un dedo, con volumen).
-    // Lo izquierdo de la nube va al lado del pulgar, lo derecho al meñique: el glaciar se acomoda en la mano ordenado.
+    // MANO: el glaciar contamina la mano de a poco. Cada punto de la nube tiene un lugar sobre la piel (palma o dedo)
+    // y un momento: la contaminación entra por las yemas y avanza hacia la muñeca. Sobre la piel la materia no queda
+    // plana: crece en cristales con relieve propio, como escarcha.
     armarMano(P,n,g,R){
       const T=AFRAME.THREE;
       // tramos de la mano (índices de MediaPipe) con su peso de superficie y su posición del pulgar (0) al meñique (1)
@@ -2472,24 +2473,31 @@
       tramos.push({k:'p',w:0.44});   // palma: una superficie continua entre la base del pulgar, la muñeca y los nudillos
       dedos.forEach((f,i)=>f.forEach(([a,b],j)=>tramos.push({k:'d',a,b,w:pesoD[i]*parte[j],u:posD[i],r0:radD[i]*(1-0.12*j),r1:radD[i]*(1-0.12*(j+1)),v0:j/3})));
       const cdf=[]; let acc=0; tramos.forEach(t=>{ acc+=t.w; cdf.push(acc); });
-      const HI=new Float32Array(n*3), HW=new Float32Array(n*3), HO=new Float32Array(n*3), lug=new Array(n);
+      const HI=new Float32Array(n*3), HW=new Float32Array(n*3), HO=new Float32Array(n*3), HG=new Float32Array(n*2), lug=new Array(n);
+      // ruido suave (valor en grilla) para el borde del avance y el relieve de los cristales
+      const hsh=(x,y)=>{ const v=Math.sin(x*127.1+y*311.7)*43758.5453; return v-Math.floor(v); };
+      const vn=(x,y)=>{ const ix=Math.floor(x), iy=Math.floor(y), fx=x-ix, fy=y-iy, sx=fx*fx*(3-2*fx), sy=fy*fy*(3-2*fy);
+        const a=hsh(ix,iy), b=hsh(ix+1,iy), c=hsh(ix,iy+1), d=hsh(ix+1,iy+1); return a+(b-a)*sx+(c-a)*sy+(a-b-c+d)*sx*sy; };
+      const fbm=(x,y)=>0.6*vn(x,y)+0.3*vn(x*2.1+5.3,y*2.1+1.7)+0.1*vn(x*4.3+9.1,y*4.3+3.3);
       for(let s=0;s<n;s++){ const x=Math.random()*acc; let k=0; while(cdf[k]<x) k++; const t=tramos[k];
         if(t.k==='p'){ const ps=Math.random(), pt=Math.random();
-          lug[s]=[ps, 0.0, -1,ps,pt, 0,0,0, (Math.random()<0.5?1:-1)*1.5708, 0.06*Math.random()]; }
+          lug[s]=[ps, 0.0, -1,ps,pt, 0,0,0, (Math.random()<0.5?1:-1)*1.5708, 0.05*Math.random(), ps, pt]; }
         else { const tt=Math.random(), r=(t.r0+(t.r1-t.r0)*tt)*Math.sqrt(0.55+0.45*Math.random());
-          lug[s]=[t.u+(Math.random()-0.5)*0.06, t.v0+tt/3, t.a,t.b,t.b, 1-tt,tt,0, Math.random()*6.2832, r]; } }
-      // emparejar: nube ordenada de izquierda a derecha ↔ mano del pulgar al meñique
-      const key=(u,v)=>Math.round(u*7)*10+v;   // orden grueso: el lado del pulgar recibe la izquierda de la nube, sin franjas de color
-      const ti=Array.from({length:n},(_,i)=>i);
-      let x0=1e9,x1=-1e9; for(let i=0;i<n;i++){ x0=Math.min(x0,P[i*3]); x1=Math.max(x1,P[i*3]); }
-      const rk=new Float32Array(n).map(()=>Math.random()); ti.sort((a,b)=>(key((P[a*3]-x0)/(x1-x0+1e-6),0)+rk[a])-(key((P[b*3]-x0)/(x1-x0+1e-6),0)+rk[b]));
-      lug.forEach(L=>L.push(Math.random())); lug.sort((a,b)=>(key(a[0],0)+a[10])-(key(b[0],0)+b[10]));
-      for(let k=0;k<n;k++){ const i=ti[k], L=lug[k]; HI.set([L[2],L[3],L[4]],i*3); HW.set([L[5],L[6],L[7]],i*3); HO.set([L[8],L[9],0],i*3); }
+          const al=t.v0+tt/3, pul=t.a<=4;   // a lo largo del dedo: 0 en la base, 1 en la yema
+          lug[s]=[t.u, al, t.a,t.b,t.b, 1-tt,tt,0, Math.random()*6.2832, r, pul?-0.15+al*0.25:t.u, pul?0.3+al*1.5:1+al]; } }
+      // momento de llegada (0 = primero) y altura del cristal en cada lugar de la mano
+      for(const L of lug){ const cx=L[10], cy=L[11];
+        L.push(Math.min(1,Math.max(0,(1-cy/2)*0.82+(fbm(cx*3.2,cy*3.2)-0.5)*0.42+0.09)));
+        const c=fbm(cx*7.0+2.0,cy*7.0+7.0); L.push(Math.pow(Math.max(0,c-0.55)/0.45,1.8)*0.32); }
+      // emparejar al azar: el glaciar entero se va adelgazando de a poco, no se vacía por un costado
+      for(let k=n-1;k>0;k--){ const j=(Math.random()*(k+1))|0; const tmp=lug[k]; lug[k]=lug[j]; lug[j]=tmp; }
+      for(let i=0;i<n;i++){ const L=lug[i]; HI.set([L[2],L[3],L[4]],i*3); HW.set([L[5],L[6],L[7]],i*3); HO.set([L[8],L[9],0],i*3); HG.set([L[12],L[13]],i*2); }
+      g.setAttribute('aHg',new T.BufferAttribute(HG,2));
       g.setAttribute('aHi',new T.BufferAttribute(HI,3)); g.setAttribute('aHw',new T.BufferAttribute(HW,3)); g.setAttribute('aHo',new T.BufferAttribute(HO,3));
       const L21=[]; for(let i=0;i<21;i++) L21.push(new T.Vector3());
       this.mu=Object.assign({},this.u,{uL:{value:L21},uCloudM:{value:new T.Matrix4()},uMano:{value:0},uManoEsc:{value:0.1},uManoC:{value:new T.Vector3()},uManoR:{value:0.3},uManoD:{value:0},uCamF:{value:new T.Vector3(0,0,-1)}});
       let VS=this.pts.material.vertexShader;
-      VS=VS.replace('varying vec3 vC;','varying vec3 vC; uniform vec3 uL[21]; uniform mat4 uCloudM; uniform float uMano,uManoEsc,uManoR,uManoD; uniform vec3 uManoC,uCamF; attribute vec3 aHi; attribute vec3 aHw; attribute vec3 aHo;');
+      VS=VS.replace('varying vec3 vC;','varying vec3 vC; uniform vec3 uL[21]; uniform mat4 uCloudM; uniform float uMano,uManoEsc,uManoR,uManoD; uniform vec3 uManoC,uCamF; attribute vec3 aHi; attribute vec3 aHw; attribute vec3 aHo; attribute vec2 aHg;');
       VS=VS.replace('vec4 mv=modelViewMatrix*vec4(q,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));',
         `vec4 wC=uCloudM*vec4(q,1.0);
               vec3 hc, ax;
@@ -2500,11 +2508,13 @@
               else { vec3 A=uL[int(aHi.x+0.5)], B=uL[int(aHi.y+0.5)], C=uL[int(aHi.z+0.5)];
                 hc=A*aHw.x+B*aHw.y+C*aHw.z; ax=B-A; } ax=length(ax)>1e-6?normalize(ax):vec3(0.0,1.0,0.0);
               vec3 uu=cross(ax,uCamF); uu=length(uu)>1e-6?normalize(uu):vec3(1.0,0.0,0.0); vec3 vv=cross(uu,ax);
-              vec3 H=hc+(uu*cos(aHo.x)+vv*sin(aHo.x))*aHo.y*uManoEsc;
-              H+=campo(H/max(uManoEsc,1e-4)*3.0+vec3(0.0,0.0,uTime*0.35))*0.012*uManoEsc;      // la materia respira sobre la piel
-              float del=clamp((length(wC.xyz-uManoC)-uManoD)/max(uManoR,1e-4),0.0,1.0)*0.85+aR*0.04;   // lo más cercano a la mano llega primero: pasa como un frente, no todo junto
-              float wm=smoothstep(0.0,1.0,clamp((uMano*1.25-del)/0.22,0.0,1.0));
-              vec3 W=mix(wC.xyz,H,wm)-uCamF*sin(wm*3.14159)*0.18*length(wC.xyz-H);          // viaja en arco hacia quien mira
+              float wm=smoothstep(0.0,1.0,clamp((uMano*1.12-aHg.x)/0.1,0.0,1.0));          // cada punto llega en su momento: el avance entra por las yemas
+              float cre=smoothstep(0.55,1.0,wm)*smoothstep(0.0,0.25,uMano*1.12-aHg.x-0.06);  // ya en la piel, el cristal crece hacia afuera
+              vec3 dirR=uu*cos(aHo.x)+vv*sin(aHo.x);
+              vec3 H=hc+dirR*(aHo.y+aHg.y*pow(aR,0.7)*cre)*uManoEsc;
+              H+=campo(H/max(uManoEsc,1e-4)*3.0+vec3(0.0,0.0,uTime*0.35))*0.01*uManoEsc;       // la materia respira sobre la piel
+              vec3 W=mix(wC.xyz,H,wm);
+              W+=(campo(wC.xyz*4.0+vec3(uTime*0.2))*0.5-uCamF*0.6)*sin(wm*3.14159)*0.35*length(wC.xyz-H);   // en el viaje deriva como polvo, en arco
               vec4 mv=viewMatrix*vec4(W,1.0); float sc=length(uCloudM[0].xyz)*mix(1.0,0.75,wm);`);
       VS=VS.replace('gl_PointSize=gk*','gl_PointSize=max(gk,wm)*');
       if(VS.indexOf('vec4 wC=uCloudM')<0||VS.indexOf('max(gk,wm)')<0){ console.warn('[Hz] mano: no se pudo armar el shader'); return; }
@@ -2541,7 +2551,7 @@
         this._mv.setFromMatrixPosition(this.mu.uCloudM.value); this.mu.uManoD.value=Math.max(0,this._mv.distanceTo(this.mu.uManoC.value)-this.mu.uManoR.value*0.5);   // el frente arranca en el borde de la nube más cercano a la mano
       }
       const meta=hay?1:0, u=this.mu.uMano;
-      u.value=Math.max(0,Math.min(1,u.value+(meta>u.value?st*0.3:-st*0.3)));
+      u.value=Math.max(0,Math.min(1,u.value+(meta>u.value?st/22:-st/6)));
       if(typeof window.hzManoForzar==='number') u.value=window.hzManoForzar;
       const activa=u.value>0.001;
       this.manoPts.visible=activa;
