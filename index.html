@@ -2308,8 +2308,10 @@
       if(M.cargando) return; M.cargando=true;
       const s=document.createElement('script'); s.src=CDN+'hands.js'; s.crossOrigin='anonymous';
       s.onload=()=>{ try{ const h=new Hands({locateFile:f=>CDN+f});
-        h.setOptions({maxNumHands:1,modelComplexity:1,minDetectionConfidence:0.6,minTrackingConfidence:0.5,selfieMode:false});
-        h.onResults(r=>{ M.lm=(r.multiHandLandmarks&&r.multiHandLandmarks[0])||null; M.t=performance.now(); });
+        h.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:0.6,minTrackingConfidence:0.5,selfieMode:false});
+        h.onResults(r=>{ const L=(r.multiHandLandmarks&&r.multiHandLandmarks[0])||null, ahora=performance.now();
+          if(L&&M.lm&&ahora-M.t<200){ const dt=Math.max(16,ahora-M.t); M.vel=L.map((p,i)=>({x:(p.x-M.lm[i].x)/dt,y:(p.y-M.lm[i].y)/dt})); } else M.vel=null;
+          M.lm=L; M.t=ahora; });
         M.h=h; bucle(); }catch(e){ M.err=String(e); console.warn('[Hz] mano',e); } };
       s.onerror=()=>{ M.err='no se pudo cargar MediaPipe'; console.warn('[Hz] mano: no se pudo cargar MediaPipe'); };
       document.head.appendChild(s);
@@ -2326,9 +2328,9 @@
   })();
   addEventListener('DOMContentLoaded',()=>{ let v=document.getElementById('hz-version'); if(!v){ v=document.createElement('div'); v.id='hz-version'; }
     v.style.cssText='position:fixed;left:8px;top:8px;z-index:99999;font:500 10px Menlo,monospace;color:#fff;opacity:.6;pointer-events:none';
-    v.textContent='v 18/10 mano'; document.body.appendChild(v);
+    v.textContent='v 18/10 17:30'; document.body.appendChild(v);
     setInterval(()=>{ const M=window.HZMano; const e=M.err?'error':!M.cargando?'espera':!M.h?'cargando':(M.lm&&performance.now()-M.t<400)?'detectada':'buscando';
-      v.textContent='v 18/10 · mano: '+e; },500); });
+      v.textContent='v 18/10 17:30 · mano: '+e; },500); });
   </script>
   <!-- NUBE: las escenas de [Hz] son nubes de puntos con su propio color (assets/*.bin).
        Entropía: la forma solo se sostiene con el movimiento de quien mira. Al dar la vuelta alrededor de la tarjeta
@@ -2499,7 +2501,7 @@
         lug[s]=L; }
       // momento de llegada (0 = primero): entra por las yemas y avanza hacia la muñeca
       for(const L of lug){ const cx=L[10], cy=L[11];
-        L[12]=Math.min(1,Math.max(0,(1-cy/2)*0.82+(fbm(cx*3.2,cy*3.2)-0.5)*0.42+0.09)); }
+        L[12]=Math.min(1,Math.max(0,(1-cy/2)*0.9+(fbm(cx*3.2,cy*3.2)-0.5)*0.12+0.05)); }
       // emparejar por lugar en la imagen: cada punto va al sitio de la mano donde cae su parte de la foto, con su color
       // (curva de Hilbert: ordena los dos conjuntos en 2D conservando la vecindad)
       const hil=(x,y)=>{ let d=0; for(let s2=512;s2>0;s2>>=1){ const rx=(x&s2)>0?1:0, ry=(y&s2)>0?1:0; d+=s2*s2*((3*rx)^ry);
@@ -2559,9 +2561,11 @@
         cam.updateMatrixWorld(); cam.getWorldPosition(this._mc); cam.getWorldDirection(this._mf);
         const D=Math.max(0.05,(this._dCarta||1.5)*0.55);
         const pxW=(2*D/cam.projectionMatrix.elements[5])/cr.height;          // unidades de mundo por píxel a esa profundidad
-        const a=this._mVisto?Math.min(1,st*30):1;
-        for(let i=0;i<21;i++){ const l=M.lm[i];
-          const sx=sr.left+l.x*sr.width, sy=sr.top+l.y*sr.height;
+        const a=this._mVisto?Math.min(1,st*40):1;
+        const adel=Math.min(90,performance.now()-M.t+40);   // ms que se adelanta: lo que tarda la detección
+        for(let i=0;i<21;i++){ const l=M.lm[i], vl=M.vel&&M.vel[i];
+          const lx=l.x+(vl?vl.x*adel:0), ly=l.y+(vl?vl.y*adel:0);
+          const sx=sr.left+lx*sr.width, sy=sr.top+ly*sr.height;
           this._mv.set((sx-cr.left)/cr.width*2-1,-((sy-cr.top)/cr.height*2-1),0.5).unproject(cam).sub(this._mc).normalize();
           const z=D+(l.z||0)*sr.width*pxW;
           const tgt=this._mv.multiplyScalar(z/Math.max(0.2,this._mv.dot(this._mf))).add(this._mc);
