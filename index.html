@@ -2308,13 +2308,13 @@
   AFRAME.registerComponent('nube',{
     schema:{ src:{default:'./assets/coral.bin'}, tamano:{default:1.0}, punto:{default:0.0042}, arma:{default:5.0}, brillo:{default:1.15},
       ola:{default:0}, olaVel:{default:0.35}, olaLargo:{default:1.0}, viento:{default:0}, giro:{default:0}, giroK:{default:0}, giroS:{default:0},
-      base:{default:1.0}, memoria:{default:5}, flujo:{default:1.0}, termo:{default:1.0}, termoEspera:{default:6}, termoDura:{default:28}, radar:{default:60}, giro2:{default:1.0}, giroMax:{default:0.55}, giroFreno:{default:6}, estela:{default:3}, ajusta:{default:true}, relieve:{default:1.6}, profundo:{default:0.16}, morphEspera:{default:2}, morphDura:{default:30}, morphMov:{default:0.3}, genera:{default:true}, genDesde:{default:0.02}, genHasta:{default:0.45}, luz:{default:1.0}, luzVel:{default:0.16} },
+      base:{default:1.0}, memoria:{default:5}, flujo:{default:1.0}, termo:{default:1.0}, termoEspera:{default:6}, termoDura:{default:28}, radar:{default:60}, ajusta:{default:true}, relieve:{default:1.6}, profundo:{default:0.16}, morphEspera:{default:2}, morphDura:{default:30}, morphMov:{default:0.3}, genera:{default:true}, genDesde:{default:0.02}, genHasta:{default:0.45}, luz:{default:1.0}, luzVel:{default:0.16} },
     init(){
       const T=AFRAME.THREE,d=this.data;
       this.anchor=this.el.closest('[mindar-image-target],[hz-ancla]')||this.el;
       this.u={uTime:{value:0},uOrden:{value:0},uCerca:{value:0.5},uViewH:{value:800},uPunto:{value:d.punto},uBrillo:{value:d.brillo},uFlujo:{value:d.flujo},
         uOla:{value:d.ola},uOlaVel:{value:d.olaVel},uOlaLargo:{value:d.olaLargo},uViento:{value:d.viento},uGiro:{value:d.giro},uGiroK:{value:d.giroK},uGiroS:{value:d.giroS},
-        uTermo:{value:0},uLo:{value:0.2},uHi:{value:0.8},uGen:{value:d.genera?0:1},uMorph:{value:0},uRot:{value:0},uGhost:{value:0},uLuz:{value:d.luz},uLuzVel:{value:d.luzVel}};
+        uTermo:{value:0},uLo:{value:0.2},uHi:{value:0.8},uGen:{value:d.genera?0:1},uMorph:{value:0},uLuz:{value:d.luz},uLuzVel:{value:d.luzVel}};
       this.t=0; this.running=false; this.pts=null; this.cargando=false; this.energia=0; this.orden=0;
       this._c=new T.Vector3(); this._d=new T.Vector3(); this._prev=null;
       this.anchor.addEventListener('targetFound',()=>this.start());
@@ -2361,7 +2361,7 @@
           this.u.uLo.value=Ls[(Ls.length*0.12)|0]; this.u.uHi.value=Ls[(Ls.length*0.96)|0]; }   // rango de luz de esta nube
         g.setAttribute('position',new T.BufferAttribute(P,3)); g.setAttribute('aCol',new T.BufferAttribute(col,4,true)); g.setAttribute('aR',new T.BufferAttribute(R,1)); g.setAttribute('aS',new T.BufferAttribute(S,3)); g.setAttribute('aSC',new T.BufferAttribute(SC,3,true));
         this.pts=new T.Points(g,new T.ShaderMaterial({uniforms:this.u,transparent:false,depthWrite:true,depthTest:true,
-          vertexShader:`attribute vec4 aCol; attribute float aR; attribute vec3 aS; attribute vec3 aSC; uniform float uMorph,uRot,uGhost;
+          vertexShader:`attribute vec4 aCol; attribute float aR; attribute vec3 aS; attribute vec3 aSC; uniform float uMorph;
             uniform float uTime,uOrden,uCerca,uViewH,uPunto,uBrillo,uFlujo,uOla,uOlaVel,uOlaLargo,uViento,uGiro,uGiroK,uGiroS,uTermo,uLo,uHi,uGen,uLuz,uLuzVel; varying vec3 vC;
             // ruido simplex 3D (Ashima Arts, MIT)
             vec3 m289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;} vec4 m289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
@@ -2381,7 +2381,6 @@
             void main(){
               float mm=smoothstep(0.0,1.0,clamp(uMorph*1.6-aR*0.6,0.0,1.0));   // 0 = la imagen del trigger, 1 = la nube
               vec3 p=mix(aS,position,mm); float s=aCol.a*mm, r=aR;
-              { float ar=uRot*mm, cr=cos(ar), sr=sin(ar); p.xy=mat2(cr,-sr,sr,cr)*p.xy; }   // GIRO: solo la nube 3D; la imagen calzada no se mueve
               if(uGiro!=0.0){ float w=mix(1.0,1.0-s,uGiroS); float rr=max(length(p.xy),0.03);
                 float a0=uTime*uGiro*w*pow(rr/0.2,-uGiroK); float c0=cos(a0),s0=sin(a0); p.xy=mat2(c0,-s0,s0,c0)*p.xy; }
               if(uViento>0.0){ float h=p.z*p.z*uViento; p.x+=sin(uTime*1.3+position.y*9.0+r)*h*0.06; p.y+=cos(uTime*1.1+position.x*7.0)*h*0.035; }
@@ -2416,30 +2415,17 @@
               float fase=dot(p.xy,vec2(0.78,0.62))*1.1+sn(vec3(p.xy,0.0)*2.6)*0.12;
               float fl=fract(fase-uTime*uLuzVel);
               float luzG=uLuz*grieta*(exp(-pow((fl-0.5)/0.07,2.0))+0.6*exp(-pow((fract(fl+0.5)-0.5)/0.05,2.0)))*(1.0-dd*0.5);
-              vC=mix(vC,vec3(1.0,0.97,0.9)*1.3,clamp(luzG,0.0,1.0));
-              // TECHO DE BRILLO: compresión suave por canal, nada llega a blanco puro (no quema)
-              { const float K=0.72, T=0.94; vec3 x=max(vC,0.0); vec3 hi=K+(T-K)*(1.0-exp(-(x-K)/(T-K))); vC=mix(x,hi,step(K,x)); }   // lineal hasta 0.72, después se acerca a 0.94 sin llegar
+              vC=mix(vC,vec3(1.0,0.97,0.88)*2.2,clamp(luzG,0.0,1.0));
               // GENERACIÓN POR CERCANÍA: lejos casi nada; al acercar el teléfono los puntos nacen sobre la imagen y crecen desde el papel
               float gk=clamp((uGen*1.15-r*0.9)/0.25,0.0,1.0);
               q.z*=mix(0.02,1.0,smoothstep(0.0,1.0,clamp(uGen*1.3-r*0.3,0.0,1.0)));
               vec4 mv=modelViewMatrix*vec4(q,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
-              gl_PointSize=(uGhost>0.0&&aR>0.3?0.0:1.0)*gk*(uGhost>0.0?0.8:1.0)*clamp(uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8+luzG*1.6)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,10.0);
+              gl_PointSize=gk*clamp(uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8+luzG*1.6)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,10.0);
               gl_Position=projectionMatrix*mv; }`,
           fragmentShader:`precision mediump float; varying vec3 vC; void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25) discard; gl_FragColor=vec4(vC*(1.0-e*1.2),1.0); }`}));
         this.pts.frustumCulled=false; this.pts.visible=this.running;
-        this.pts.material.transparent=true; this.pts.renderOrder=0;   // opaca igual (alfa 1), pero ordenada después de la estela
         const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.pts.layers.set(2); window.hzCapa2=true; }
         this.el.object3D.add(this.pts); this.t=0;
-        // ESTELA: copias de la nube que siguen el giro con retraso; mezcla normal (no suma), así no quema
-        this.ghosts=[]; const VS=this.pts.material.vertexShader;
-        for(let k=0;k<d.estela;k++){
-          const u=Object.assign({},this.u,{uRot:{value:0},uGhost:{value:0}});
-          const gm=new T.ShaderMaterial({uniforms:u,transparent:true,depthWrite:false,depthTest:true,vertexShader:VS,
-            fragmentShader:`precision highp float; varying vec3 vC; uniform float uGhost; void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25) discard; gl_FragColor=vec4(vC*(1.0-e*1.2),uGhost); }`});
-          const gp=new T.Points(g,gm); gp.frustumCulled=false; gp.visible=false; gp.renderOrder=-1-k;
-          if(P2.modo==='glow') gp.layers.set(2);
-          this.el.object3D.add(gp); this.ghosts.push({p:gp,u}); }
-        this.rot=0; this.omega=0; this.rotHist=[];
         if(d.radar>0) this.armarRadar(P,col,n);
       }).catch(e=>{ this.cargando=false; console.warn('[Hz] no se pudo leer la nube',d.src,e); });
     },
@@ -2476,8 +2462,7 @@
       let kc=+window.hzCalor; if(!isFinite(kc)) kc=0.5; const cer=Math.min(1,Math.max(0,(kc-0.15)/0.7));
       this._nVis=(this._nVis==null?6:this._nVis)+((6+(this.marcas.length-6)*cer)-(this._nVis==null?6:this._nVis))*0.08;
       const nVis=Math.round(this._nVis);
-      const ar=(this.rot||0)*mmE, car=Math.cos(ar), sar=Math.sin(ar);
-      for(const m of this.marcas.slice(0,nVis)){ this._w.copy(m.s).lerp(m.p,mmE); { const x=this._w.x, y=this._w.y; this._w.x=x*car-y*sar; this._w.y=x*sar+y*car; } this._w.z*=gz; this.pts.localToWorld(this._w); this._w.project(cam);
+      for(const m of this.marcas.slice(0,nVis)){ this._w.copy(m.s).lerp(m.p,mmE); this._w.z*=gz; this.pts.localToWorld(this._w); this._w.project(cam);
         if(this._w.z>1||Math.abs(this._w.x)>1.05||Math.abs(this._w.y)>1.05){ m.sx=null; continue; }
         m.sx=(this._w.x*0.5+0.5)*W; m.sy=(-this._w.y*0.5+0.5)*H; vis.push(m); ocupado.push({x:m.sx-4,y:m.sy-4,w:8,h:8}); }
       for(const m of vis){
@@ -2508,7 +2493,7 @@
     start(){ clearTimeout(this._lostT); this.cargar(); if(this.running) return; this.running=true; this._prev=null; this._suave=null;
       if(!this._visto){ this._visto=true; this.t=0; this.orden=0; this.energia=0.3; } else this.energia=Math.max(this.energia,0.9);   // al reencontrar la tarjeta sigue donde estaba
       if(this.pts) this.pts.visible=true; },
-    reset(){ this.running=false; if(this.pts) this.pts.visible=false; if(this.ghosts) this.ghosts.forEach(gh=>gh.p.visible=false); if(this.hud) this.hud.getContext('2d').clearRect(0,0,this.hud.width,this.hud.height); },
+    reset(){ this.running=false; if(this.pts) this.pts.visible=false; if(this.hud) this.hud.getContext('2d').clearRect(0,0,this.hud.width,this.hud.height); },
     tick(t,dt){
       if(!this.running){ if(this.anchor.components&&this.anchor.components['mindar-image-target']&&this.anchor.object3D.visible) this.start(); if(!this.running) return; }
       if(!this.pts) return; if(!this.pts.visible) this.pts.visible=true;
@@ -2519,22 +2504,8 @@
       if(cam){ cam.getWorldPosition(this._c); this.el.object3D.worldToLocal(this._c); this._d.copy(this._c).normalize();
         if(!this._suave) this._suave=this._d.clone(); else this._suave.lerp(this._d,Math.min(1,st*4)).normalize();
         if(this._prev){ const ang=Math.acos(Math.min(1,Math.max(-1,this._prev.dot(this._suave)))); this.energia+=Math.max(0,ang-st*0.12)*2.4; }
-        this._prev=(this._prev||this._suave.clone()).copy(this._suave);
-        // SUBIR / BAJAR EL TELÉFONO: cambia la elevación con que se mira la tarjeta (ángulo en el plano vertical de la tarjeta).
-        // Ese cambio empuja el giro; subir gira en un sentido, bajar en el otro. El temblor de la mano no cuenta.
-        const elev=Math.atan2(this._suave.y,this._suave.z);
-        if(this._elev!=null){ let de=elev-this._elev; if(de>Math.PI) de-=2*Math.PI; if(de<-Math.PI) de+=2*Math.PI;
-          const umbral=0.0025; if(Math.abs(de)>umbral&&Math.abs(de)<0.15)   // >0.15 rad en un cuadro = salto del seguimiento, no un gesto
-            this.omega+=Math.sign(de)*(Math.abs(de)-umbral)*d.giro2*2.2; }
-        this._elev=elev; }
+        this._prev=(this._prev||this._suave.clone()).copy(this._suave); }
       this.energia=Math.min(1.2,this.energia*Math.exp(-st/d.memoria));
-      // giro contemplativo: velocidad limitada y frenado muy lento
-      if(this.omega!=null){ this.omega=Math.max(-d.giroMax,Math.min(d.giroMax,this.omega))*Math.exp(-st/d.giroFreno);
-        if(Math.abs(this.omega)<0.002) this.omega=0;
-        this.rot+=this.omega*st; this.u.uRot.value=this.rot;
-        const vis=Math.min(1,Math.abs(this.omega)/0.12)*(this.u.uMorph.value>0.5?1:0);
-        this.ghosts.forEach((gh,k)=>{ const lag=(k+1)*0.32; gh.u.uRot.value=this.rot-this.omega*lag;
-          gh.u.uGhost.value=0.28*(1-(k+1)/(this.ghosts.length+1))*vis; gh.p.visible=this.pts.visible&&vis>0.02; }); }
       const meta=d.base+(1-d.base)*Math.min(1,this.energia);
       const intro=Math.min(1,this.t/d.arma); this.orden+=(meta*intro-this.orden)*Math.min(1,st*1.5);
       let k=+window.hzCalor; if(!isFinite(k)) k=0.5; this.u.uCerca.value+=(k-this.u.uCerca.value)*Math.min(1,st*2);
@@ -3463,7 +3434,56 @@
     #hz-aviso.on{ opacity:.92; }
   </style>
   <div id="hz-aviso"></div>
-  <div id="hz-version" style="position:fixed;left:8px;top:8px;z-index:99999;font:500 10px Menlo,monospace;color:#fff;opacity:.6;pointer-events:none">v 17/10 22:45</div>
+  <div id="hz-version" style="position:fixed;left:8px;top:8px;z-index:99999;font:500 10px Menlo,monospace;color:#fff;opacity:.6;pointer-events:none">v 17/10 22:25</div>
+
+  <!-- Organismos procedurales inspirados en rotíferos; geometría volumétrica, sin modelos externos. -->
+  <script>
+  AFRAME.registerComponent('rotiferos',{
+    schema:{cantidad:{default:3},puntos:{default:11000},tamano:{default:0.85},velocidad:{default:0.65}},
+    init(){
+      const T=AFRAME.THREE,d=this.data; this.animales=[]; this.grupo=new T.Group(); this.el.object3D.add(this.grupo);
+      const cv=document.createElement('canvas'); cv.width=cv.height=32; const cx=cv.getContext('2d');
+      const gr=cx.createRadialGradient(16,16,0,16,16,16); gr.addColorStop(0,'white');gr.addColorStop(.35,'rgba(255,255,255,.7)');gr.addColorStop(1,'rgba(255,255,255,0)'); cx.fillStyle=gr;cx.fillRect(0,0,32,32);this.tex=new T.CanvasTexture(cv);
+      let seed=94731; const rnd=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296;};
+      const count=Math.max(1,Math.min(6,Math.round(d.cantidad))), N=Math.max(1800,Math.min(18000,Math.round(d.puntos)));
+      for(let a=0;a<count;a++){
+        const g=new T.Group(),pos=new Float32Array(N*3),col=new Float32Array(N*3);
+        for(let i=0;i<N;i++){
+          const u=rnd(),theta=rnd()*Math.PI*2; let y=-.44+u*.83;
+          let r=(.025+.115*Math.pow(Math.sin(Math.PI*u),.85))*(1+.06*Math.cos(u*100));
+          let x,z;
+          if(i<N*.76){r*=.94+.06*rnd();x=r*Math.cos(theta);z=r*Math.sin(theta)*.76;}
+          else {r*=Math.sqrt(rnd())*.68;x=r*Math.cos(theta)+.018*Math.sin(u*18);z=r*Math.sin(theta);}
+          const gold=i>=N*.76, v=.65+rnd()*.35;
+          pos.set([x,y,z],i*3);col.set(gold?[v,.48*v,.10*v]:[.24*v,.76*v,v],i*3);
+        }
+        const geo=new T.BufferGeometry();geo.setAttribute('position',new T.BufferAttribute(pos,3));geo.setAttribute('color',new T.BufferAttribute(col,3));
+        const mat=new T.PointsMaterial({size:.0035,map:this.tex,vertexColors:true,transparent:true,opacity:.82,depthWrite:false,blending:T.AdditiveBlending});
+        g.add(new T.Points(geo,mat));
+        // Dos coronas ciliadas en volumen: cada filamento tiene ocho segmentos.
+        const segs=8,cilios=144,cp=new Float32Array(cilios*segs*6),cc=new Float32Array(cp.length);
+        for(let i=0;i<cc.length;i+=3){const tip=(i/6%segs)>5;cc.set(tip?[1,.68,.2]:[.45,.84,1],i);}
+        const cg=new T.BufferGeometry();cg.setAttribute('position',new T.BufferAttribute(cp,3));cg.setAttribute('color',new T.BufferAttribute(cc,3));
+        g.add(new T.LineSegments(cg,new T.LineBasicMaterial({vertexColors:true,transparent:true,opacity:.55,depthWrite:false,blending:T.AdditiveBlending})));
+        const base=new T.Vector3(count===1?0:(a-(count-1)/2)*.39, .06+(a%2)*.09,.23+(a%2)*.14);
+        g.position.copy(base);g.rotation.set(.25, a*.8,.2*(a-1));g.scale.setScalar(d.tamano*(a===0?1:.74+.12*rnd()));this.grupo.add(g);
+        this.animales.push({g,geo,base,orig:pos.slice(),cg,cp,phase:a*2.37,segs,cilios});
+      }
+    },
+    tick(ms){if(!this.el.object3D.visible)return;const t=ms*.001*this.data.velocidad;
+      for(const a of this.animales){const {g,orig,geo,cg,cp,phase,segs,cilios}=a;const p=geo.attributes.position.array;
+        for(let i=0;i<p.length;i+=3){const y=orig[i+1],wave=Math.sin(y*8-t*1.8+phase);p[i]=orig[i]+.018*wave;p[i+1]=y*(1+.025*Math.sin(t*2+phase));p[i+2]=orig[i+2]+.009*Math.cos(y*10-t+phase);}
+        geo.attributes.position.needsUpdate=true;let k=0;
+        for(let c=0;c<cilios;c++){const lobe=c%2,angle=Math.floor(c/2)/(cilios/2)*Math.PI*2;
+          for(let j=0;j<segs;j++)for(let e=0;e<2;e++){const f=(j+e)/segs,bend=Math.sin(angle*5-t*9+phase-f*2.6)*.028*f*f,rad=.056+.115*f;
+            cp[k++]=(lobe?1:-1)*.049+Math.cos(angle)*rad+bend;cp[k++]=.365+.09*f-.055*f*f+Math.sin(angle)*rad*.34;cp[k++]=Math.sin(angle)*rad+Math.cos(angle)*bend;}}
+        cg.attributes.position.needsUpdate=true;g.position.x=a.base.x+.025*Math.sin(t*.7+phase);g.position.y=a.base.y+.025*Math.sin(t*.9+phase);g.rotation.y=phase*.3+.23*Math.sin(t*.4+phase);g.rotation.z=.16*Math.sin(t*.65+phase);
+      }
+    },
+    remove(){this.grupo.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});this.tex.dispose();this.el.object3D.remove(this.grupo);}
+  });
+  </script>
+
   <!-- Botón mini 🔊 -->
   <button id="audio-btn" title="Habilitar audio">🔊</button>
 
@@ -3471,7 +3491,12 @@
        Con ?ver=N se abre la escena N sin cámara ni trigger (vista previa en la compu: arrastrar para girar, rueda para acercar). -->
   <script>
   (function(){
-    const H=window.HZ||{}, ESC=H.escenas||[];
+    const H=window.HZ||{};
+    // ?organismo=0 usa el nuevo efecto en la tarjeta 0. Combinar con &ver=0 para previsualizar.
+    // También se configura directamente: { efecto:'rotiferos', opciones:{rotiferos:{cantidad:3}} }.
+    const ESC=(H.escenas||[]).slice(), org=new URLSearchParams(location.search).get('organismo');
+    if(org!==null){const i=parseInt(org,10);if(Number.isInteger(i)&&i>=0&&i<128)ESC[i]=Object.assign({},ESC[i]||{target:i},{efecto:'rotiferos',marco:false});}
+    if(!ESC.length)ESC.push({efecto:'rotiferos',target:0,marco:false});
     const qs=new URLSearchParams(location.search), VER=qs.has('ver')?parseInt(qs.get('ver'),10):null;
     const preview=VER!==null && !isNaN(VER);
 
@@ -3509,6 +3534,7 @@
     const marco=(e,i,str)=>e.marco===false?'':'<a-entity marco-luz="'+esc(attr('marco-luz',e,{src:i,strength:e.marco!=null?e.marco:(str==null?1:str),color:'#FFC46A',hot:'#FFF1C8'}))+'"></a-entity>';
 
     const EFECTOS={
+      rotiferos:(e,i)=>({anchor:'',inner:'<a-entity '+tr(e,'0 0 0',1)+' rotiferos="'+esc(attr('rotiferos',e))+'"></a-entity>'}),
       // 0 · la luz del foco → la materia se condensa en el modelo → rayos, polvo que sube y balanceo lento
       // bosque · nube de puntos tipo escaneo LiDAR
       bosque:(e,i)=>({anchor:'', inner:marco(e,i,0.5)+'<a-entity bosque="'+esc(attr('bosque',e))+'"></a-entity>'}),
