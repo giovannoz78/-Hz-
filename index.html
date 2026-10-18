@@ -2299,6 +2299,37 @@
     }
   });
   </script>
+  <!-- MANO: MediaPipe Hands lee la mano en el mismo video de la cámara. La nube activa pasa a la mano. -->
+  <script>
+  window.HZMano=window.HZMano||(function(){
+    const M={lm:null,t:0,src:null,cargando:false,err:null};
+    const CDN='https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/';
+    M.iniciar=function(){
+      if(M.cargando) return; M.cargando=true;
+      const s=document.createElement('script'); s.src=CDN+'hands.js'; s.crossOrigin='anonymous';
+      s.onload=()=>{ try{ const h=new Hands({locateFile:f=>CDN+f});
+        h.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:0.6,minTrackingConfidence:0.5,selfieMode:false});
+        h.onResults(r=>{ M.lm=(r.multiHandLandmarks&&r.multiHandLandmarks[0])||null; M.t=performance.now(); });
+        M.h=h; bucle(); }catch(e){ M.err=String(e); console.warn('[Hz] mano',e); } };
+      s.onerror=()=>{ M.err='no se pudo cargar MediaPipe'; console.warn('[Hz] mano: no se pudo cargar MediaPipe'); };
+      document.head.appendChild(s);
+    };
+    async function bucle(){
+      for(;;){
+        const src=window.hzManoFuente||document.querySelector('video');
+        const listo=src&&(src.tagName!=='VIDEO'||(src.readyState>=2&&src.videoWidth));
+        if(listo){ try{ await M.h.send({image:src}); M.src=src; }catch(e){ M.err=String(e); } }
+        await new Promise(r=>setTimeout(r,listo?45:300));
+      }
+    }
+    return M;
+  })();
+  addEventListener('DOMContentLoaded',()=>{ const v=document.createElement('div'); v.id='hz-version';
+    v.style.cssText='position:fixed;left:8px;top:8px;z-index:99999;font:500 10px Menlo,monospace;color:#fff;opacity:.6;pointer-events:none';
+    v.textContent='v 18/10 mano'; document.body.appendChild(v);
+    setInterval(()=>{ const M=window.HZMano; const e=M.err?'error':!M.cargando?'espera':!M.h?'cargando':(M.lm&&performance.now()-M.t<400)?'detectada':'buscando';
+      v.textContent='v 18/10 · mano: '+e; },500); });
+  </script>
   <!-- NUBE: las escenas de [Hz] son nubes de puntos con su propio color (assets/*.bin).
        Entropía: la forma solo se sostiene con el movimiento de quien mira. Al dar la vuelta alrededor de la tarjeta
        la materia se ordena y la forma aparece entera; si el teléfono se queda quieto, se va deshaciendo por zonas
@@ -2426,8 +2457,96 @@
         this.pts.frustumCulled=false; this.pts.visible=this.running;
         const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.pts.layers.set(2); window.hzCapa2=true; }
         this.el.object3D.add(this.pts); this.t=0;
+        this.armarMano(P,n,g,R);
         if(d.radar>0) this.armarRadar(P,col,n);
       }).catch(e=>{ this.cargando=false; console.warn('[Hz] no se pudo leer la nube',d.src,e); });
+    },
+    // MANO: cada punto de la nube tiene un lugar sobre la mano (palma o un dedo, con volumen).
+    // Lo izquierdo de la nube va al lado del pulgar, lo derecho al meñique: el glaciar se acomoda en la mano ordenado.
+    armarMano(P,n,g,R){
+      const T=AFRAME.THREE;
+      // tramos de la mano (índices de MediaPipe) con su peso de superficie y su posición del pulgar (0) al meñique (1)
+      const dedos=[[[1,2],[2,3],[3,4]],[[5,6],[6,7],[7,8]],[[9,10],[10,11],[11,12]],[[13,14],[14,15],[15,16]],[[17,18],[18,19],[19,20]]];
+      const pesoD=[0.11,0.12,0.13,0.12,0.09], posD=[0.0,0.3,0.5,0.7,0.95], radD=[0.14,0.11,0.115,0.105,0.09], parte=[0.42,0.32,0.26];
+      const tramos=[];
+      tramos.push({k:'p',w:0.44});   // palma: una superficie continua entre la base del pulgar, la muñeca y los nudillos
+      dedos.forEach((f,i)=>f.forEach(([a,b],j)=>tramos.push({k:'d',a,b,w:pesoD[i]*parte[j],u:posD[i],r0:radD[i]*(1-0.12*j),r1:radD[i]*(1-0.12*(j+1)),v0:j/3})));
+      const cdf=[]; let acc=0; tramos.forEach(t=>{ acc+=t.w; cdf.push(acc); });
+      const HI=new Float32Array(n*3), HW=new Float32Array(n*3), HO=new Float32Array(n*3), lug=new Array(n);
+      for(let s=0;s<n;s++){ const x=Math.random()*acc; let k=0; while(cdf[k]<x) k++; const t=tramos[k];
+        if(t.k==='p'){ const ps=Math.random(), pt=Math.random();
+          lug[s]=[ps, 0.0, -1,ps,pt, 0,0,0, (Math.random()<0.5?1:-1)*1.5708, 0.06*Math.random()]; }
+        else { const tt=Math.random(), r=(t.r0+(t.r1-t.r0)*tt)*Math.sqrt(0.55+0.45*Math.random());
+          lug[s]=[t.u+(Math.random()-0.5)*0.06, t.v0+tt/3, t.a,t.b,t.b, 1-tt,tt,0, Math.random()*6.2832, r]; } }
+      // emparejar: nube ordenada de izquierda a derecha ↔ mano del pulgar al meñique
+      const key=(u,v)=>Math.round(u*7)*10+v;   // orden grueso: el lado del pulgar recibe la izquierda de la nube, sin franjas de color
+      const ti=Array.from({length:n},(_,i)=>i);
+      let x0=1e9,x1=-1e9; for(let i=0;i<n;i++){ x0=Math.min(x0,P[i*3]); x1=Math.max(x1,P[i*3]); }
+      const rk=new Float32Array(n).map(()=>Math.random()); ti.sort((a,b)=>(key((P[a*3]-x0)/(x1-x0+1e-6),0)+rk[a])-(key((P[b*3]-x0)/(x1-x0+1e-6),0)+rk[b]));
+      lug.forEach(L=>L.push(Math.random())); lug.sort((a,b)=>(key(a[0],0)+a[10])-(key(b[0],0)+b[10]));
+      for(let k=0;k<n;k++){ const i=ti[k], L=lug[k]; HI.set([L[2],L[3],L[4]],i*3); HW.set([L[5],L[6],L[7]],i*3); HO.set([L[8],L[9],0],i*3); }
+      g.setAttribute('aHi',new T.BufferAttribute(HI,3)); g.setAttribute('aHw',new T.BufferAttribute(HW,3)); g.setAttribute('aHo',new T.BufferAttribute(HO,3));
+      const L21=[]; for(let i=0;i<21;i++) L21.push(new T.Vector3());
+      this.mu=Object.assign({},this.u,{uL:{value:L21},uCloudM:{value:new T.Matrix4()},uMano:{value:0},uManoEsc:{value:0.1},uManoC:{value:new T.Vector3()},uManoR:{value:0.3},uManoD:{value:0},uCamF:{value:new T.Vector3(0,0,-1)}});
+      let VS=this.pts.material.vertexShader;
+      VS=VS.replace('varying vec3 vC;','varying vec3 vC; uniform vec3 uL[21]; uniform mat4 uCloudM; uniform float uMano,uManoEsc,uManoR,uManoD; uniform vec3 uManoC,uCamF; attribute vec3 aHi; attribute vec3 aHw; attribute vec3 aHo;');
+      VS=VS.replace('vec4 mv=modelViewMatrix*vec4(q,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));',
+        `vec4 wC=uCloudM*vec4(q,1.0);
+              vec3 hc, ax;
+              if(aHi.x<0.0){ float ps=aHi.y, pt=aHi.z;                                   // palma: borde de abajo pulgar→muñeca, borde de arriba por los nudillos
+                vec3 bo=mix(uL[1],uL[0],ps);
+                vec3 to=ps<0.3333?mix(uL[5],uL[9],ps*3.0):ps<0.6667?mix(uL[9],uL[13],ps*3.0-1.0):mix(uL[13],uL[17],ps*3.0-2.0);
+                hc=mix(bo,to,pt); ax=to-bo; }
+              else { vec3 A=uL[int(aHi.x+0.5)], B=uL[int(aHi.y+0.5)], C=uL[int(aHi.z+0.5)];
+                hc=A*aHw.x+B*aHw.y+C*aHw.z; ax=B-A; } ax=length(ax)>1e-6?normalize(ax):vec3(0.0,1.0,0.0);
+              vec3 uu=cross(ax,uCamF); uu=length(uu)>1e-6?normalize(uu):vec3(1.0,0.0,0.0); vec3 vv=cross(uu,ax);
+              vec3 H=hc+(uu*cos(aHo.x)+vv*sin(aHo.x))*aHo.y*uManoEsc;
+              H+=campo(H/max(uManoEsc,1e-4)*3.0+vec3(0.0,0.0,uTime*0.35))*0.012*uManoEsc;      // la materia respira sobre la piel
+              float del=clamp((length(wC.xyz-uManoC)-uManoD)/max(uManoR,1e-4),0.0,1.0)*0.85+aR*0.04;   // lo más cercano a la mano llega primero: pasa como un frente, no todo junto
+              float wm=smoothstep(0.0,1.0,clamp((uMano*1.25-del)/0.22,0.0,1.0));
+              vec3 W=mix(wC.xyz,H,wm)-uCamF*sin(wm*3.14159)*0.18*length(wC.xyz-H);          // viaja en arco hacia quien mira
+              vec4 mv=viewMatrix*vec4(W,1.0); float sc=length(uCloudM[0].xyz)*mix(1.0,0.75,wm);`);
+      VS=VS.replace('gl_PointSize=gk*','gl_PointSize=max(gk,wm)*');
+      if(VS.indexOf('vec4 wC=uCloudM')<0||VS.indexOf('max(gk,wm)')<0){ console.warn('[Hz] mano: no se pudo armar el shader'); return; }
+      const m=this.pts.material;
+      this.manoPts=new T.Points(g,new T.ShaderMaterial({uniforms:this.mu,transparent:m.transparent,depthWrite:true,depthTest:true,vertexShader:VS,fragmentShader:m.fragmentShader}));
+      this.manoPts.frustumCulled=false; this.manoPts.visible=false; this.manoPts.layers.mask=this.pts.layers.mask;
+      this.el.sceneEl.object3D.add(this.manoPts);
+      this._mv=new T.Vector3(); this._mc=new T.Vector3(); this._mf=new T.Vector3(); this._mt=L21.map(()=>new T.Vector3()); this._mVisto=false;
+    },
+    // cada cuadro: la mano detectada pasa de la imagen de la cámara al espacio 3D, delante de la tarjeta
+    pasoMano(st){
+      const M=window.HZMano, cam=this.el.sceneEl.camera; if(!this.manoPts||!cam) return;
+      if(window.__hzNubeAct!==this){ this.manoPts.visible=false; return; }
+      if(this.anchor.object3D.visible&&this.pts){ this.pts.updateMatrixWorld(); this.mu.uCloudM.value.copy(this.pts.matrixWorld);
+        cam.getWorldPosition(this._mc); this._mv.setFromMatrixPosition(this.pts.matrixWorld); this._dCarta=this._mc.distanceTo(this._mv);
+        const e=this.mu.uCloudM.value; this.mu.uManoR.value=Math.max(0.05,0.7*Math.hypot(e.elements[0],e.elements[1],e.elements[2])*(this.data.relieve/1.6)); }
+      const hay=M&&M.lm&&(performance.now()-M.t<400)&&M.src;
+      if(hay){
+        const r=this.el.sceneEl.renderer, cr=r.domElement.getBoundingClientRect(), sr=M.src.getBoundingClientRect();
+        cam.updateMatrixWorld(); cam.getWorldPosition(this._mc); cam.getWorldDirection(this._mf);
+        const D=Math.max(0.05,(this._dCarta||1.5)*0.55);
+        const pxW=(2*D/cam.projectionMatrix.elements[5])/cr.height;          // unidades de mundo por píxel a esa profundidad
+        const a=this._mVisto?Math.min(1,st*14):1;
+        for(let i=0;i<21;i++){ const l=M.lm[i];
+          const sx=sr.left+l.x*sr.width, sy=sr.top+l.y*sr.height;
+          this._mv.set((sx-cr.left)/cr.width*2-1,-((sy-cr.top)/cr.height*2-1),0.5).unproject(cam).sub(this._mc).normalize();
+          const z=D+(l.z||0)*sr.width*pxW;
+          const tgt=this._mv.multiplyScalar(z/Math.max(0.2,this._mv.dot(this._mf))).add(this._mc);
+          this._mt[i].lerp(tgt,a); this.mu.uL.value[i].copy(this._mt[i]); }
+        this._mVisto=true;
+        const L=this.mu.uL.value; this.mu.uManoEsc.value=L[0].distanceTo(L[9]);
+        this.mu.uManoC.value.copy(L[0]).add(L[5]).add(L[9]).add(L[13]).add(L[17]).multiplyScalar(0.2);
+        this.mu.uCamF.value.copy(this._mf);
+        this._mv.setFromMatrixPosition(this.mu.uCloudM.value); this.mu.uManoD.value=Math.max(0,this._mv.distanceTo(this.mu.uManoC.value)-this.mu.uManoR.value*0.5);   // el frente arranca en el borde de la nube más cercano a la mano
+      }
+      const meta=hay?1:0, u=this.mu.uMano;
+      u.value=Math.max(0,Math.min(1,u.value+(meta>u.value?st*0.3:-st*0.3)));
+      if(typeof window.hzManoForzar==='number') u.value=window.hzManoForzar;
+      const activa=u.value>0.001;
+      this.manoPts.visible=activa;
+      if(this.pts) this.pts.visible=!activa&&this.running;
+      if(activa&&!this.running){ this.t+=st; this.u.uTime.value=this.t; }
     },
     // RADAR: lectura tipo instrumento en una capa fija sobre la pantalla (tamaño constante, nunca se pisan).
     // Cada marca sigue un punto de grieta de la nube; la etiqueta va en una columna al costado con su X / Y en vivo.
@@ -2449,6 +2568,7 @@
       const c=this.hud, dpr=Math.min(2,window.devicePixelRatio||1), W=innerWidth, H=innerHeight;
       if(c.width!==W*dpr||c.height!==H*dpr){ c.width=W*dpr; c.height=H*dpr; }
       const g=c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+      if(this.mu) a*=1-Math.min(1,this.mu.uMano.value*3);
       if(a<0.01||!this.pts||!this.pts.visible||!this.running||!this.anchor.object3D.visible) return;
       const cam=this.el.sceneEl.camera; if(!cam) return;
       const fs=8, bh=11, ocupado=[];
@@ -2490,13 +2610,14 @@
         g.fillStyle='#fff'; g.fillRect(m.sx-0.75,m.sy-0.75,1.5,1.5); }
       g.globalAlpha=1;
     },
-    start(){ clearTimeout(this._lostT); this.cargar(); if(this.running) return; this.running=true; this._prev=null; this._suave=null;
+    start(){ clearTimeout(this._lostT); this.cargar(); window.__hzNubeAct=this; if(window.HZMano) HZMano.iniciar(); if(this.running) return; this.running=true; this._prev=null; this._suave=null;
       if(!this._visto){ this._visto=true; this.t=0; this.orden=0; this.energia=0.3; } else this.energia=Math.max(this.energia,0.9);   // al reencontrar la tarjeta sigue donde estaba
       if(this.pts) this.pts.visible=true; },
     reset(){ this.running=false; if(this.pts) this.pts.visible=false; if(this.hud) this.hud.getContext('2d').clearRect(0,0,this.hud.width,this.hud.height); },
     tick(t,dt){
+      this.pasoMano(Math.min(0.05,(dt||16)/1000));
       if(!this.running){ if(this.anchor.components&&this.anchor.components['mindar-image-target']&&this.anchor.object3D.visible) this.start(); if(!this.running) return; }
-      if(!this.pts) return; if(!this.pts.visible) this.pts.visible=true;
+      if(!this.pts) return; if(!this.pts.visible&&!(this.manoPts&&this.manoPts.visible)) this.pts.visible=true;
       const d=this.data, st=Math.min(0.05,(dt||16)/1000); this.t+=st;
       // movimiento de quien mira: cuánto gira la dirección de la cámara vista desde la escena
       const cam=this.el.sceneEl.camera;
