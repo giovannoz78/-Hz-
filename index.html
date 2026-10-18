@@ -2408,21 +2408,23 @@
                                 mix(vec3(1.0,0.85,0.1),vec3(0.95,0.15,0.05),(calor-0.8)/0.2);
               float zt=clamp(uTermo*1.35-(sn(position*2.2)*0.5+0.5)*0.35,0.0,1.0);   // avanza por zonas
               base=mix(base,tc*uBrillo,smoothstep(0.0,1.0,zt)*mm);
-              vC=base*(1.0-dd*0.45)+frente*(base*0.9+0.12)+ola*vec3(1.0,0.95,0.85);
+              float luminance=dot(base,vec3(0.2126,0.7152,0.0722));
+              base=mix(vec3(luminance)*vec3(0.77,0.91,1.0),base,0.48);
+              vC=base*(1.0-dd*0.45)+frente*base*0.12+ola*vec3(0.12,0.16,0.18);
               // LUZ EN LAS GRIETAS: una franja avanza despacio por la imagen y solo enciende las grietas que cruza,
               // así la luz se ve correr por ellas. Sin halo: brillan los propios puntos.
               float grieta=mix(smoothstep(0.62,0.9,dot(aSC,vec3(0.3,0.55,0.15))),smoothstep(0.45,0.8,calor),mm);   // grietas de la imagen al inicio, de la nube al final
               float fase=dot(p.xy,vec2(0.78,0.62))*1.1+sn(vec3(p.xy,0.0)*2.6)*0.12;
               float fl=fract(fase-uTime*uLuzVel);
               float luzG=uLuz*grieta*(exp(-pow((fl-0.5)/0.07,2.0))+0.6*exp(-pow((fract(fl+0.5)-0.5)/0.05,2.0)))*(1.0-dd*0.5);
-              vC=mix(vC,vec3(1.0,0.97,0.88)*2.2,clamp(luzG,0.0,1.0));
+              vC=mix(vC,vec3(0.70,0.82,0.88),clamp(luzG,0.0,1.0));
               // GENERACIÓN POR CERCANÍA: lejos casi nada; al acercar el teléfono los puntos nacen sobre la imagen y crecen desde el papel
               float gk=clamp((uGen*1.15-r*0.9)/0.25,0.0,1.0);
               q.z*=mix(0.02,1.0,smoothstep(0.0,1.0,clamp(uGen*1.3-r*0.3,0.0,1.0)));
               vec4 mv=modelViewMatrix*vec4(q,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
-              gl_PointSize=gk*clamp(uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8+luzG*1.6)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,10.0);
+              gl_PointSize=gk*clamp(uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8+luzG*1.6)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),0.65,2.0);
               gl_Position=projectionMatrix*mv; }`,
-          fragmentShader:`precision mediump float; varying vec3 vC; void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25) discard; gl_FragColor=vec4(vC*(1.0-e*1.2),1.0); }`}));
+          fragmentShader:`precision mediump float; varying vec3 vC; void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25) discard; gl_FragColor=vec4(min(vC,vec3(0.86))*(1.0-e*1.2),1.0); }`}));
         this.pts.frustumCulled=false; this.pts.visible=this.running;
         const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.pts.layers.set(2); window.hzCapa2=true; }
         this.el.object3D.add(this.pts); this.t=0;
@@ -3439,7 +3441,7 @@
   <!-- Organismos procedurales inspirados en rotíferos; geometría volumétrica, sin modelos externos. -->
   <script>
   AFRAME.registerComponent('rotiferos',{
-    schema:{cantidad:{default:3},puntos:{default:11000},tamano:{default:0.85},velocidad:{default:0.65}},
+    schema:{cantidad:{default:1},puntos:{default:16000},tamano:{default:1.15},velocidad:{default:0.45}},
     init(){
       const T=AFRAME.THREE,d=this.data; this.animales=[]; this.grupo=new T.Group(); this.el.object3D.add(this.grupo);
       const cv=document.createElement('canvas'); cv.width=cv.height=32; const cx=cv.getContext('2d');
@@ -3458,8 +3460,49 @@
           pos.set([x,y,z],i*3);col.set(gold?[v,.48*v,.10*v]:[.24*v,.76*v,v],i*3);
         }
         const geo=new T.BufferGeometry();geo.setAttribute('position',new T.BufferAttribute(pos,3));geo.setAttribute('color',new T.BufferAttribute(col,3));
-        const mat=new T.PointsMaterial({size:.0035,map:this.tex,vertexColors:true,transparent:true,opacity:.82,depthWrite:false,blending:T.AdditiveBlending});
+        const mat=new T.PointsMaterial({size:.0015,map:this.tex,vertexColors:true,transparent:true,opacity:.28,depthWrite:false,blending:T.AdditiveBlending});
         g.add(new T.Points(geo,mat));
+        // Membrana continua con iluminación de borde y micropliegues; conserva transparencia central.
+        const skinGeo=new T.SphereGeometry(1,80,100);
+        const sp=skinGeo.attributes.position;
+        for(let q=0;q<sp.count;q++){
+          const sy=sp.getY(q),u=(sy+1)*.5,theta=Math.atan2(sp.getZ(q),sp.getX(q));
+          const profile=(.023+.115*Math.pow(Math.sin(Math.PI*u),.85));
+          const fold=1+.018*Math.sin(u*135+Math.sin(theta*7))+.012*Math.cos(theta*17+u*24);
+          sp.setXYZ(q,Math.cos(theta)*profile*fold,-.44+u*.83,Math.sin(theta)*profile*.76*fold);
+        }
+        skinGeo.computeVertexNormals();
+        const uniforms={time:{value:0}};
+        const skinMat=new T.ShaderMaterial({uniforms,transparent:true,depthWrite:false,side:T.DoubleSide,
+          vertexShader:`varying vec3 vN;varying vec3 vV;varying vec3 vP;uniform float time;
+          void main(){vec3 p=position;float w=sin(p.y*8.-time*1.8);p.x+=.018*w;p.z+=.009*cos(p.y*10.-time);p.y*=1.+.025*sin(time*2.);
+          vec4 mv=modelViewMatrix*vec4(p,1.);vN=normalize(normalMatrix*normal);vV=normalize(-mv.xyz);vP=position;gl_Position=projectionMatrix*mv;}`,
+          fragmentShader:`precision highp float;varying vec3 vN;varying vec3 vV;varying vec3 vP;
+          void main(){float edge=pow(1.-abs(dot(normalize(vN),normalize(vV))),2.3);
+          float ridges=pow(.5+.5*sin(vP.y*540.+sin(vP.x*170.)*1.5),16.);
+          float grain=fract(sin(dot(floor(vP.xy*1900.)+floor(vP.z*900.),vec2(127.1,311.7)))*43758.5453);
+          vec3 c=mix(vec3(.08,.27,.33),vec3(.58,.88,1.),edge);c+=ridges*.10+pow(grain,28.)*.24;
+          gl_FragColor=vec4(c,.055+edge*.50+ridges*.035);}`});
+        const skin=new T.Mesh(skinGeo,skinMat);skin.renderOrder=2;g.add(skin);
+        // Tube digestif, mastax et inclusions cellulaires : volumes enchâssés dans le corps.
+        const organGroup=new T.Group();g.add(organGroup);
+        const amber=new T.MeshPhongMaterial({color:0x9d651e,emissive:0x3c2304,transparent:true,opacity:.63,shininess:65,depthWrite:false});
+        const cellMat=new T.MeshPhongMaterial({color:0xd2b45c,emissive:0x2c2108,transparent:true,opacity:.43,shininess:100,depthWrite:false});
+        const beadGeo=new T.SphereGeometry(1,12,10);
+        for(let q=0;q<150;q++){
+          const y=-.29+rnd()*.53,r=(.02+.045*Math.sin((y+.35)*5))*Math.sqrt(rnd()),ang=rnd()*Math.PI*2;
+          const b=new T.Mesh(beadGeo,q%4?amber:cellMat),sz=.003+rnd()*.009;
+          b.position.set(Math.cos(ang)*r+.013*Math.sin(y*19),y,Math.sin(ang)*r*.65);b.scale.set(sz,sz*(.7+rnd()),sz*.7);organGroup.add(b);
+        }
+        const digestive=new T.CatmullRomCurve3(Array.from({length:22},(_,q)=>{const y=-.34+q/21*.57;return new T.Vector3(.018*Math.sin(y*16),y,.005*Math.cos(y*21));}));
+        organGroup.add(new T.Mesh(new T.TubeGeometry(digestive,60,.012,12,false),cellMat));
+        for(let q=0;q<2;q++){const jaw=new T.Mesh(new T.TorusGeometry(.026,.004,8,28),cellMat);jaw.position.set((q?1:-1)*.017,.23,0);jaw.rotation.y=q?.45:-.45;organGroup.add(jaw);}
+        const lamp=new T.PointLight(0xc5efff,.85,3);lamp.position.set(-.4,.8,1);g.add(lamp);
+        g.add(new T.AmbientLight(0x87b9c5,.65));
+        // Couronnes buccales, deux lobes translucides à la naissance des cils.
+        const lipMat=new T.MeshPhongMaterial({color:0x94dce7,emissive:0x133944,transparent:true,opacity:.3,shininess:90,depthWrite:false});
+        for(let q=0;q<2;q++){const lip=new T.Mesh(new T.TorusGeometry(.056,.012,10,48),lipMat);lip.rotation.x=Math.PI/2;lip.position.set((q?1:-1)*.049,.365,0);g.add(lip);}
+
         // Dos coronas ciliadas en volumen: cada filamento tiene ocho segmentos.
         const segs=8,cilios=144,cp=new Float32Array(cilios*segs*6),cc=new Float32Array(cp.length);
         for(let i=0;i<cc.length;i+=3){const tip=(i/6%segs)>5;cc.set(tip?[1,.68,.2]:[.45,.84,1],i);}
@@ -3467,17 +3510,17 @@
         g.add(new T.LineSegments(cg,new T.LineBasicMaterial({vertexColors:true,transparent:true,opacity:.55,depthWrite:false,blending:T.AdditiveBlending})));
         const base=new T.Vector3(count===1?0:(a-(count-1)/2)*.39, .06+(a%2)*.09,.23+(a%2)*.14);
         g.position.copy(base);g.rotation.set(.25, a*.8,.2*(a-1));g.scale.setScalar(d.tamano*(a===0?1:.74+.12*rnd()));this.grupo.add(g);
-        this.animales.push({g,geo,base,orig:pos.slice(),cg,cp,phase:a*2.37,segs,cilios});
+        this.animales.push({g,geo,base,orig:pos.slice(),cg,cp,phase:a*2.37,segs,cilios,uniforms,organGroup});
       }
     },
     tick(ms){if(!this.el.object3D.visible)return;const t=ms*.001*this.data.velocidad;
-      for(const a of this.animales){const {g,orig,geo,cg,cp,phase,segs,cilios}=a;const p=geo.attributes.position.array;
+      for(const a of this.animales){const {g,orig,geo,cg,cp,phase,segs,cilios}=a;a.uniforms.time.value=t;a.organGroup.scale.y=1+.018*Math.sin(t*2+phase);const p=geo.attributes.position.array;
         for(let i=0;i<p.length;i+=3){const y=orig[i+1],wave=Math.sin(y*8-t*1.8+phase);p[i]=orig[i]+.018*wave;p[i+1]=y*(1+.025*Math.sin(t*2+phase));p[i+2]=orig[i+2]+.009*Math.cos(y*10-t+phase);}
         geo.attributes.position.needsUpdate=true;let k=0;
         for(let c=0;c<cilios;c++){const lobe=c%2,angle=Math.floor(c/2)/(cilios/2)*Math.PI*2;
           for(let j=0;j<segs;j++)for(let e=0;e<2;e++){const f=(j+e)/segs,bend=Math.sin(angle*5-t*9+phase-f*2.6)*.028*f*f,rad=.056+.115*f;
             cp[k++]=(lobe?1:-1)*.049+Math.cos(angle)*rad+bend;cp[k++]=.365+.09*f-.055*f*f+Math.sin(angle)*rad*.34;cp[k++]=Math.sin(angle)*rad+Math.cos(angle)*bend;}}
-        cg.attributes.position.needsUpdate=true;g.position.x=a.base.x+.025*Math.sin(t*.7+phase);g.position.y=a.base.y+.025*Math.sin(t*.9+phase);g.rotation.y=phase*.3+.23*Math.sin(t*.4+phase);g.rotation.z=.16*Math.sin(t*.65+phase);
+        cg.attributes.position.needsUpdate=true;g.position.x=a.base.x+.025*Math.sin(t*.7+phase);g.position.y=a.base.y+.025*Math.sin(t*.9+phase);g.rotation.y=phase*.3+.23*Math.sin(t*.4+phase);g.rotation.z=-.32+.09*Math.sin(t*.65+phase);
       }
     },
     remove(){this.grupo.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});this.tex.dispose();this.el.object3D.remove(this.grupo);}
@@ -3523,6 +3566,15 @@
     const COLOR=/^(color|gold|hot|tint|light|idColor|rainGold|fogGold|splashGold|crossColor|neonColor|colorInner|colorOuter|palette)$/;
     const attr=(name,e,extra)=>{
       const o=Object.assign({},BASE[name]||{},extra||{},(e.opciones||{})[name]||{});
+      // Límites visuales aplicados después de la configuración externa.
+      if(name==='nube') Object.assign(o,{
+        punto:0.00125,brillo:0.72,termo:0,radar:0,luz:0.12,
+        ola:Math.min(Number(o.ola)||0,0.08),flujo:0.12,
+        giro:Math.min(Number(o.giro)||0,0.04),giroK:0,giroS:0,
+        viento:Math.min(Number(o.viento)||0,0.12),relieve:1.18,
+        base:1,arma:1.6,morphEspera:0.8,morphDura:8,morphMov:0,
+        genera:false
+      });
       return Object.keys(o).map(k=>k+': '+(COLOR.test(k)?HZC(String(o[k])):o[k])).join('; ');
     };
     const esc=v=>String(v).replace(/"/g,'&quot;');
