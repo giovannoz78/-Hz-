@@ -2299,39 +2299,6 @@
     }
   });
   </script>
-  <!-- MANO: MediaPipe Hands lee la mano en el mismo video de la cámara. La nube activa pasa a la mano. -->
-  <script>
-  window.HZMano=window.HZMano||(function(){
-    const M={lm:null,t:0,src:null,cargando:false,err:null};
-    const CDN='https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/';
-    M.iniciar=function(){
-      if(M.cargando) return; M.cargando=true;
-      const s=document.createElement('script'); s.src=CDN+'hands.js'; s.crossOrigin='anonymous';
-      s.onload=()=>{ try{ const h=new Hands({locateFile:f=>CDN+f});
-        h.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:0.6,minTrackingConfidence:0.5,selfieMode:false});
-        h.onResults(r=>{ const L=(r.multiHandLandmarks&&r.multiHandLandmarks[0])||null, ahora=performance.now();
-          if(L&&M.lm&&ahora-M.t<200){ const dt=Math.max(16,ahora-M.t); M.vel=L.map((p,i)=>({x:(p.x-M.lm[i].x)/dt,y:(p.y-M.lm[i].y)/dt})); } else M.vel=null;
-          M.lm=L; M.t=ahora; });
-        M.h=h; bucle(); }catch(e){ M.err=String(e); console.warn('[Hz] mano',e); } };
-      s.onerror=()=>{ M.err='no se pudo cargar MediaPipe'; console.warn('[Hz] mano: no se pudo cargar MediaPipe'); };
-      document.head.appendChild(s);
-    };
-    async function bucle(){
-      for(;;){
-        const src=window.hzManoFuente||document.querySelector('video');
-        const listo=src&&(src.tagName!=='VIDEO'||(src.readyState>=2&&src.videoWidth));
-        if(listo){ try{ await M.h.send({image:src}); M.src=src; }catch(e){ M.err=String(e); } }
-        await new Promise(r=>listo?requestAnimationFrame(()=>r()):setTimeout(r,300));
-      }
-    }
-    return M;
-  })();
-  addEventListener('DOMContentLoaded',()=>{ let v=document.getElementById('hz-version'); if(!v){ v=document.createElement('div'); v.id='hz-version'; }
-    v.style.cssText='position:fixed;left:8px;top:8px;z-index:99999;font:500 10px Menlo,monospace;color:#fff;opacity:.6;pointer-events:none';
-    v.textContent='v 18/10 17:30'; document.body.appendChild(v);
-    setInterval(()=>{ const M=window.HZMano; const e=M.err?'error':!M.cargando?'espera':!M.h?'cargando':(M.lm&&performance.now()-M.t<400)?'detectada':'buscando';
-      v.textContent='v 18/10 17:30 · mano: '+e; },500); });
-  </script>
   <!-- NUBE: las escenas de [Hz] son nubes de puntos con su propio color (assets/*.bin).
        Entropía: la forma solo se sostiene con el movimiento de quien mira. Al dar la vuelta alrededor de la tarjeta
        la materia se ordena y la forma aparece entera; si el teléfono se queda quieto, se va deshaciendo por zonas
@@ -2376,7 +2343,7 @@
         const S=new Float32Array(n*3), SC=new Uint8Array(n*3);
         { const mi=(this.anchor.id||'').match(/(\d+)$/), DA=window.HZ_DATOS&&HZ_DATOS.aspectos, asp=(mi&&DA&&+DA[mi[1]])||1;
           if(img){ const cw=img.naturalWidth, ch=img.naturalHeight, cv=document.createElement('canvas'); cv.width=cw; cv.height=ch; const cx2=cv.getContext('2d'); cx2.drawImage(img,0,0);
-            const px=cx2.getImageData(0,0,cw,ch).data, M=cw*ch, cdf=new Float32Array(M); let acc=0; this._imgPx={px,cw,ch};
+            const px=cx2.getImageData(0,0,cw,ch).data, M=cw*ch, cdf=new Float32Array(M); let acc=0;
             for(let j=0;j<M;j++){ const l=(px[j*4]*0.3+px[j*4+1]*0.55+px[j*4+2]*0.15)/255; acc+=0.04+Math.pow(l,1.3); cdf[j]=acc; }
             const smp=new Array(n);
             for(let i=0;i<n;i++){ const u=Math.random()*acc; let lo=0,hi=M-1; while(lo<hi){ const mid=(lo+hi)>>1; if(cdf[mid]<u) lo=mid+1; else hi=mid; }
@@ -2459,132 +2426,8 @@
         this.pts.frustumCulled=false; this.pts.visible=this.running;
         const P2=(window.HZ&&HZ.paleta)||{}; if(P2.modo==='glow'){ this.pts.layers.set(2); window.hzCapa2=true; }
         this.el.object3D.add(this.pts); this.t=0;
-        this.armarMano(P,n,g,R);
         if(d.radar>0) this.armarRadar(P,col,n);
       }).catch(e=>{ this.cargando=false; console.warn('[Hz] no se pudo leer la nube',d.src,e); });
-    },
-    // MANO: el glaciar contamina la mano de a poco. Cada punto de la nube tiene un lugar sobre la piel (palma o dedo)
-    // y un momento: la contaminación entra por las yemas y avanza hacia la muñeca. Sobre la piel la materia no queda
-    // plana: crece en cristales con relieve propio, como escarcha.
-    armarMano(P,n,g,R){
-      const T=AFRAME.THREE;
-      // tramos de la mano (índices de MediaPipe) con su peso de superficie y su posición del pulgar (0) al meñique (1)
-      const dedos=[[[1,2],[2,3],[3,4]],[[5,6],[6,7],[7,8]],[[9,10],[10,11],[11,12]],[[13,14],[14,15],[15,16]],[[17,18],[18,19],[19,20]]];
-      const pesoD=[0.11,0.12,0.13,0.12,0.09], posD=[0.0,0.3,0.5,0.7,0.95], radD=[0.14,0.11,0.115,0.105,0.09], parte=[0.42,0.32,0.26];
-      const tramos=[];
-      tramos.push({k:'p',w:0.56});   // palma: una superficie continua entre la base del pulgar, la muñeca y los nudillos
-      dedos.forEach((f,i)=>f.forEach(([a,b],j)=>tramos.push({k:'d',a,b,w:pesoD[i]*parte[j],u:posD[i],r0:radD[i]*(1-0.12*j),r1:radD[i]*(1-0.12*(j+1)),v0:j/3})));
-      const cdf=[]; let acc=0; tramos.forEach(t=>{ acc+=t.w; cdf.push(acc); });
-      const HI=new Float32Array(n*3), HW=new Float32Array(n*3), HO=new Float32Array(n*3), HG=new Float32Array(n*2), lug=new Array(n);
-      // ruido suave (valor en grilla) para el borde del avance y el relieve de los cristales
-      const hsh=(x,y)=>{ const v=Math.sin(x*127.1+y*311.7)*43758.5453; return v-Math.floor(v); };
-      const vn=(x,y)=>{ const ix=Math.floor(x), iy=Math.floor(y), fx=x-ix, fy=y-iy, sx=fx*fx*(3-2*fx), sy=fy*fy*(3-2*fy);
-        const a=hsh(ix,iy), b=hsh(ix+1,iy), c=hsh(ix,iy+1), d=hsh(ix+1,iy+1); return a+(b-a)*sx+(c-a)*sy+(a-b-c+d)*sx*sy; };
-      const fbm=(x,y)=>0.6*vn(x,y)+0.3*vn(x*2.1+5.3,y*2.1+1.7)+0.1*vn(x*4.3+9.1,y*4.3+3.3);
-      // LA IMAGEN DEL TRIGGER INVADE LA MANO: la foto se estira sobre la mano como una piel (de la muñeca a las yemas,
-      // del pulgar al meñique). Donde la foto es clara (hielo, grietas) la mano se llena; donde es oscura queda la piel.
-      const IM=this._imgPx;
-      const lumUV=(u,v)=>{ if(!IM) return 1; const x=Math.min(IM.cw-1,Math.max(0,(u*IM.cw)|0)), y=Math.min(IM.ch-1,Math.max(0,(v*IM.ch)|0)), j=(y*IM.cw+x)*4;
-        return (IM.px[j]*0.3+IM.px[j+1]*0.55+IM.px[j+2]*0.15)/255; };
-      const uvMano=(cx,cy)=>[Math.min(1,Math.max(0,(cx+0.15)/1.15)), Math.min(1,Math.max(0,1-cy/2))];
-      for(let s=0;s<n;s++){ let L=null;
-        for(let intento=0;intento<80&&!L;intento++){ const x=Math.random()*acc; let k=0; while(cdf[k]<x) k++; const t=tramos[k]; let C;
-          if(t.k==='p'){ const ps=Math.random(), pt=Math.random();
-            C=[ps, 0.0, -1,ps,pt, 0,0,0, (Math.random()<0.5?1:-1)*1.5708, 0.02+0.03*Math.random(), ps, pt]; }
-          else { const tt=-0.15+Math.random()*1.3, ex=tt<0?-tt/0.15:tt>1?(tt-1)/0.15:0, tap=Math.sqrt(Math.max(0,1-ex*ex));
-            const r=(t.r0+(t.r1-t.r0)*Math.min(1,Math.max(0,tt)))*tap*(0.9+0.1*Math.random());   // sobre la superficie del dedo
-            const al=t.v0+tt/3, pul=t.a<=4;
-            C=[t.u, al, t.a,t.b,t.b, 1-tt,tt,0, Math.random()*6.2832, r, pul?-0.15+al*0.25:t.u, pul?0.3+al*1.5:1+al]; }
-          const [u,v]=uvMano(C[10]+(t.k==='p'?0:Math.cos(C[8])*0.09),C[11]), l=lumUV(u,v);   // en los dedos la foto da la vuelta alrededor del dedo
-          if(Math.random()<0.03+Math.pow(l,1.8)){ C.push(0); C.push(u); C.push(v); L=C; } }
-        if(!L){ L=[0.5,0,-1,0.5,0.5,0,0,0,1.5708,0.03,0.5,0.5,0,0.5,0.5]; }
-        lug[s]=L; }
-      // momento de llegada (0 = primero): entra por las yemas y avanza hacia la muñeca
-      for(const L of lug){ const cx=L[10], cy=L[11];
-        L[12]=Math.min(1,Math.max(0,(1-cy/2)*0.9+(fbm(cx*3.2,cy*3.2)-0.5)*0.12+0.05)); }
-      // emparejar por lugar en la imagen: cada punto va al sitio de la mano donde cae su parte de la foto, con su color
-      // (curva de Hilbert: ordena los dos conjuntos en 2D conservando la vecindad)
-      const hil=(x,y)=>{ let d=0; for(let s2=512;s2>0;s2>>=1){ const rx=(x&s2)>0?1:0, ry=(y&s2)>0?1:0; d+=s2*s2*((3*rx)^ry);
-          if(ry===0){ if(rx===1){ x=1023-x; y=1023-y; } const t2=x; x=y; y=t2; } } return d; };
-      const q10=v=>Math.min(1023,Math.max(0,(v*1023)|0));
-      let sy0=1e9,sy1=-1e9; for(let i=0;i<n;i++){ sy0=Math.min(sy0,this.S[i*3+1]); sy1=Math.max(sy1,this.S[i*3+1]); }
-      const kp=new Float64Array(n); for(let i=0;i<n;i++){ const u=this.S[i*3]+0.5, v=(sy1-this.S[i*3+1])/Math.max(1e-6,sy1-sy0); kp[i]=hil(q10(u),q10(v))+Math.random()*0.5; }
-      const ti=Array.from({length:n},(_,i)=>i).sort((a,b)=>kp[a]-kp[b]);
-      lug.forEach(L=>{ L.push(hil(q10(L[13]),q10(L[14]))+Math.random()*0.5); }); lug.sort((a,b)=>a[15]-b[15]);
-      const lug2=new Array(n); for(let k=0;k<n;k++) lug2[ti[k]]=lug[k]; for(let k=0;k<n;k++) lug[k]=lug2[k];
-      const gs=()=>Math.abs((Math.random()+Math.random()+Math.random()-1.5)/0.87);
-      for(let i=0;i<n;i++){ const L=lug[i]; HI.set([L[2],L[3],L[4]],i*3); HW.set([L[5],L[6],L[7]],i*3); HO.set([L[8],L[9],0.03*gs()],i*3); HG.set([L[12],0],i*2); }
-      g.setAttribute('aHg',new T.BufferAttribute(HG,2));
-      g.setAttribute('aHi',new T.BufferAttribute(HI,3)); g.setAttribute('aHw',new T.BufferAttribute(HW,3)); g.setAttribute('aHo',new T.BufferAttribute(HO,3));
-      const L21=[]; for(let i=0;i<21;i++) L21.push(new T.Vector3());
-      this.mu=Object.assign({},this.u,{uL:{value:L21},uCloudM:{value:new T.Matrix4()},uMano:{value:0},uManoEsc:{value:0.1},uManoC:{value:new T.Vector3()},uManoR:{value:0.3},uManoD:{value:0},uCamF:{value:new T.Vector3(0,0,-1)}});
-      let VS=this.pts.material.vertexShader;
-      VS=VS.replace('varying vec3 vC;','varying vec3 vC; uniform vec3 uL[21]; uniform mat4 uCloudM; uniform float uMano,uManoEsc,uManoR,uManoD; uniform vec3 uManoC,uCamF; attribute vec3 aHi; attribute vec3 aHw; attribute vec3 aHo; attribute vec2 aHg;');
-      VS=VS.replace('vec4 mv=modelViewMatrix*vec4(q,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));',
-        `vec4 wC=uCloudM*vec4(q,1.0);
-              vec3 hc, ax;
-              if(aHi.x<0.0){ float ps=aHi.y, pt=aHi.z;                                   // palma: borde de abajo pulgar→muñeca, borde de arriba por los nudillos
-                vec3 bo=mix(uL[1],uL[0],ps);
-                vec3 to=ps<0.3333?mix(uL[5],uL[9],ps*3.0):ps<0.6667?mix(uL[9],uL[13],ps*3.0-1.0):mix(uL[13],uL[17],ps*3.0-2.0);
-                hc=mix(bo,to,pt); ax=to-bo; }
-              else { vec3 A=uL[int(aHi.x+0.5)], B=uL[int(aHi.y+0.5)], C=uL[int(aHi.z+0.5)];
-                hc=A*aHw.x+B*aHw.y+C*aHw.z; ax=B-A; } ax=length(ax)>1e-6?normalize(ax):vec3(0.0,1.0,0.0);
-              vec3 uu=cross(ax,uCamF); uu=length(uu)>1e-6?normalize(uu):vec3(1.0,0.0,0.0); vec3 vv=cross(uu,ax);
-              float wm=smoothstep(0.0,1.0,clamp((uMano*1.12-aHg.x)/0.1,0.0,1.0));          // cada punto llega en su momento: el avance entra por las yemas
-              float cre=smoothstep(0.55,1.0,wm)*smoothstep(0.0,0.25,uMano*1.12-aHg.x-0.06);  // ya en la piel, el cristal crece hacia afuera
-              vec3 dirR=uu*cos(aHo.x)+vv*sin(aHo.x);
-              vec3 H=hc+dirR*(aHo.y+aHg.y*pow(aR,0.7)*cre)*uManoEsc;
-              H+=campo(vec3(aR*91.7,aHo.x*7.3,aHo.y*53.1))*aHo.z*uManoEsc;                   // dispersión fija: los bordes se deshacen en polvo
-              H+=campo(H/max(uManoEsc,1e-4)*3.0+vec3(0.0,0.0,uTime*0.35))*0.01*uManoEsc;       // la materia respira sobre la piel
-              vec3 W=mix(wC.xyz,H,wm);
-              W+=(campo(wC.xyz*4.0+vec3(uTime*0.2))*0.5-uCamF*0.6)*sin(wm*3.14159)*0.35*length(wC.xyz-H);   // en el viaje deriva como polvo, en arco
-              vC=mix(vC,min(aSC*1.1*uBrillo,vec3(0.94)),smoothstep(0.2,1.0,wm));                  // en la mano: el color de la foto del trigger
-              vec4 mv=viewMatrix*vec4(W,1.0); float sc=length(uCloudM[0].xyz)*mix(1.0,0.75,wm);`);
-      VS=VS.replace('gl_PointSize=gk*','gl_PointSize=max(gk,wm)*');
-      if(VS.indexOf('vec4 wC=uCloudM')<0||VS.indexOf('max(gk,wm)')<0){ console.warn('[Hz] mano: no se pudo armar el shader'); return; }
-      const m=this.pts.material;
-      this.manoPts=new T.Points(g,new T.ShaderMaterial({uniforms:this.mu,transparent:m.transparent,depthWrite:true,depthTest:true,vertexShader:VS,fragmentShader:m.fragmentShader}));
-      this.manoPts.frustumCulled=false; this.manoPts.visible=false; this.manoPts.layers.mask=this.pts.layers.mask;
-      this.el.sceneEl.object3D.add(this.manoPts);
-      this._mv=new T.Vector3(); this._mc=new T.Vector3(); this._mf=new T.Vector3(); this._mt=L21.map(()=>new T.Vector3()); this._mVisto=false;
-    },
-    // cada cuadro: la mano detectada pasa de la imagen de la cámara al espacio 3D, delante de la tarjeta
-    pasoMano(st){
-      const M=window.HZMano, cam=this.el.sceneEl.camera; if(!this.manoPts||!cam) return;
-      if(window.__hzNubeAct!==this){ this.manoPts.visible=false; return; }
-      if(this.anchor.object3D.visible&&this.pts){ this.pts.updateMatrixWorld(); this.mu.uCloudM.value.copy(this.pts.matrixWorld);
-        cam.getWorldPosition(this._mc); this._mv.setFromMatrixPosition(this.pts.matrixWorld); this._dCarta=this._mc.distanceTo(this._mv);
-        const e=this.mu.uCloudM.value; this.mu.uManoR.value=Math.max(0.05,0.7*Math.hypot(e.elements[0],e.elements[1],e.elements[2])*(this.data.relieve/1.6)); }
-      const hay=M&&M.lm&&(performance.now()-M.t<400)&&M.src;
-      if(hay){
-        const r=this.el.sceneEl.renderer, cr=r.domElement.getBoundingClientRect(), sr=M.src.getBoundingClientRect();
-        cam.updateMatrixWorld(); cam.getWorldPosition(this._mc); cam.getWorldDirection(this._mf);
-        const D=Math.max(0.05,(this._dCarta||1.5)*0.55);
-        const pxW=(2*D/cam.projectionMatrix.elements[5])/cr.height;          // unidades de mundo por píxel a esa profundidad
-        const a=this._mVisto?Math.min(1,st*40):1;
-        const adel=Math.min(90,performance.now()-M.t+40);   // ms que se adelanta: lo que tarda la detección
-        for(let i=0;i<21;i++){ const l=M.lm[i], vl=M.vel&&M.vel[i];
-          const lx=l.x+(vl?vl.x*adel:0), ly=l.y+(vl?vl.y*adel:0);
-          const sx=sr.left+lx*sr.width, sy=sr.top+ly*sr.height;
-          this._mv.set((sx-cr.left)/cr.width*2-1,-((sy-cr.top)/cr.height*2-1),0.5).unproject(cam).sub(this._mc).normalize();
-          const z=D+(l.z||0)*sr.width*pxW;
-          const tgt=this._mv.multiplyScalar(z/Math.max(0.2,this._mv.dot(this._mf))).add(this._mc);
-          this._mt[i].lerp(tgt,a); this.mu.uL.value[i].copy(this._mt[i]); }
-        this._mVisto=true;
-        const L=this.mu.uL.value; this.mu.uManoEsc.value=L[0].distanceTo(L[9]);
-        this.mu.uManoC.value.copy(L[0]).add(L[5]).add(L[9]).add(L[13]).add(L[17]).multiplyScalar(0.2);
-        this.mu.uCamF.value.copy(this._mf);
-        this._mv.setFromMatrixPosition(this.mu.uCloudM.value); this.mu.uManoD.value=Math.max(0,this._mv.distanceTo(this.mu.uManoC.value)-this.mu.uManoR.value*0.5);   // el frente arranca en el borde de la nube más cercano a la mano
-      }
-      const meta=hay?1:0, u=this.mu.uMano;
-      u.value=Math.max(0,Math.min(1,u.value+(meta>u.value?st/22:-st/6)));
-      if(typeof window.hzManoForzar==='number') u.value=window.hzManoForzar;
-      const activa=u.value>0.001;
-      this.manoPts.visible=activa;
-      if(this.pts) this.pts.visible=!activa&&this.running;
-      if(activa&&!this.running){ this.t+=st; this.u.uTime.value=this.t; }
-      // mientras la nube está en la mano, el recuadro de búsqueda de MindAR no se dibuja encima
-      if(activa!==this._uiOff){ this._uiOff=activa; document.querySelectorAll('.mindar-ui-scanning').forEach(e=>{ e.style.visibility=activa?'hidden':''; }); }
     },
     // RADAR: lectura tipo instrumento en una capa fija sobre la pantalla (tamaño constante, nunca se pisan).
     // Cada marca sigue un punto de grieta de la nube; la etiqueta va en una columna al costado con su X / Y en vivo.
@@ -2606,7 +2449,6 @@
       const c=this.hud, dpr=Math.min(2,window.devicePixelRatio||1), W=innerWidth, H=innerHeight;
       if(c.width!==W*dpr||c.height!==H*dpr){ c.width=W*dpr; c.height=H*dpr; }
       const g=c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
-      if(this.mu) a*=1-Math.min(1,this.mu.uMano.value*3);
       if(a<0.01||!this.pts||!this.pts.visible||!this.running||!this.anchor.object3D.visible) return;
       const cam=this.el.sceneEl.camera; if(!cam) return;
       const fs=8, bh=11, ocupado=[];
@@ -2648,14 +2490,13 @@
         g.fillStyle='#fff'; g.fillRect(m.sx-0.75,m.sy-0.75,1.5,1.5); }
       g.globalAlpha=1;
     },
-    start(){ clearTimeout(this._lostT); this.cargar(); window.__hzNubeAct=this; if(window.HZMano) HZMano.iniciar(); if(this.running) return; this.running=true; this._prev=null; this._suave=null;
+    start(){ clearTimeout(this._lostT); this.cargar(); if(this.running) return; this.running=true; this._prev=null; this._suave=null;
       if(!this._visto){ this._visto=true; this.t=0; this.orden=0; this.energia=0.3; } else this.energia=Math.max(this.energia,0.9);   // al reencontrar la tarjeta sigue donde estaba
       if(this.pts) this.pts.visible=true; },
     reset(){ this.running=false; if(this.pts) this.pts.visible=false; if(this.hud) this.hud.getContext('2d').clearRect(0,0,this.hud.width,this.hud.height); },
     tick(t,dt){
-      this.pasoMano(Math.min(0.05,(dt||16)/1000));
       if(!this.running){ if(this.anchor.components&&this.anchor.components['mindar-image-target']&&this.anchor.object3D.visible) this.start(); if(!this.running) return; }
-      if(!this.pts) return; if(!this.pts.visible&&!(this.manoPts&&this.manoPts.visible)) this.pts.visible=true;
+      if(!this.pts) return; if(!this.pts.visible) this.pts.visible=true;
       const d=this.data, st=Math.min(0.05,(dt||16)/1000); this.t+=st;
       // movimiento de quien mira: cuánto gira la dirección de la cámara vista desde la escena
       const cam=this.el.sceneEl.camera;
