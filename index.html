@@ -2458,7 +2458,11 @@
       const vis=[];
       const gz=0.02+0.98*Math.min(1,Math.max(0,this.u.uGen.value*1.3-0.15));
       const mmk=Math.min(1,Math.max(0,this.u.uMorph.value*1.6-0.3)); const mmE=mmk*mmk*(3-2*mmk);
-      for(const m of this.marcas){ this._w.copy(m.s).lerp(m.p,mmE); this._w.z*=gz; this.pts.localToWorld(this._w); this._w.project(cam);
+      // CANTIDAD SEGÚN LA DISTANCIA: lejos pocas lecturas, cerca todas (las primeras están repartidas por toda la forma)
+      let kc=+window.hzCalor; if(!isFinite(kc)) kc=0.5; const cer=Math.min(1,Math.max(0,(kc-0.15)/0.7));
+      this._nVis=(this._nVis==null?6:this._nVis)+((6+(this.marcas.length-6)*cer)-(this._nVis==null?6:this._nVis))*0.08;
+      const nVis=Math.round(this._nVis);
+      for(const m of this.marcas.slice(0,nVis)){ this._w.copy(m.s).lerp(m.p,mmE); this._w.z*=gz; this.pts.localToWorld(this._w); this._w.project(cam);
         if(this._w.z>1||Math.abs(this._w.x)>1.05||Math.abs(this._w.y)>1.05){ m.sx=null; continue; }
         m.sx=(this._w.x*0.5+0.5)*W; m.sy=(-this._w.y*0.5+0.5)*H; vis.push(m); ocupado.push({x:m.sx-4,y:m.sy-4,w:8,h:8}); }
       for(const m of vis){
@@ -3430,7 +3434,7 @@
     #hz-aviso.on{ opacity:.92; }
   </style>
   <div id="hz-aviso"></div>
-  <div id="hz-version" style="position:fixed;left:8px;top:8px;z-index:99999;font:500 10px Menlo,monospace;color:#fff;opacity:.6;pointer-events:none">v 17/10 22:15</div>
+  <div id="hz-version" style="position:fixed;left:8px;top:8px;z-index:99999;font:500 10px Menlo,monospace;color:#fff;opacity:.6;pointer-events:none">v 17/10 22:25</div>
   <!-- Botón mini 🔊 -->
   <button id="audio-btn" title="Habilitar audio">🔊</button>
 
