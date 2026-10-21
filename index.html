@@ -2321,16 +2321,16 @@
         const src=window.hzManoFuente||document.querySelector('video');
         const listo=src&&(src.tagName!=='VIDEO'||(src.readyState>=2&&src.videoWidth));
         if(listo){ try{ await M.h.send({image:src}); M.src=src; }catch(e){ M.err=String(e); } }
-        await new Promise(r=>setTimeout(r,listo?45:300));   // pausa entre lecturas: deja aire al seguimiento de la tarjeta
+        await new Promise(r=>setTimeout(r,listo?20:300));   // pausa entre lecturas: deja aire al seguimiento de la tarjeta
       }
     }
     return M;
   })();
   addEventListener('DOMContentLoaded',()=>{ let v=document.getElementById('hz-version'); if(!v){ v=document.createElement('div'); v.id='hz-version'; }
     v.style.cssText='position:fixed;left:8px;top:8px;z-index:99999;font:500 10px Menlo,monospace;color:#fff;opacity:.6;pointer-events:none';
-    v.textContent='v 20/10 sin valores'; document.body.appendChild(v);
+    v.textContent='v 20/10 21:00'; document.body.appendChild(v);
     setInterval(()=>{ const M=window.HZMano; const e=M.err?'error':!M.cargando?'espera':!M.h?'cargando':(M.lm&&performance.now()-M.t<400)?'detectada':'buscando';
-      v.textContent='v 20/10 sin valores · mano: '+e; },500); });
+      v.textContent='v 20/10 21:00 · mano: '+e; },500); });
   </script>
   <!-- FITOPLANCTON SOBRE LA MANO: cuando MediaPipe ve la mano, el fitoplancton abisal la coloniza.
        Las células (diatomeas, dinoflagelados, cocolitofóridos, cadenas) nacen en las yemas y avanzan hacia la muñeca,
@@ -2339,13 +2339,13 @@
   <script>
   window.HZPlancton=window.HZPlancton||(function(){
     const cv=document.createElement('canvas'); cv.id='hz-plancton';
-    cv.style.cssText='position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:99990';
+    cv.style.cssText='position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:99990;mix-blend-mode:screen';   // el plancton suma luz a la imagen de la cámara: no la tiñe como una mancha
     const main=cv.getContext('2d'); let ctx=main;
     const layer=document.createElement('canvas'), lctx=layer.getContext('2d');
     const soft=document.createElement('canvas'), sctx=soft.getContext('2d');
     const hasFilter=typeof main.filter==='string';
-    const CFG={celulas:520, coloniza:20, suelta:5, contagio:0.25, difuminado:0.9, corriente:0.35};
-    let W=0,H=0,DPR=1,time=0,col=0,ultimo=0,activo=false,ultT=performance.now();
+    const CFG={celulas:220, coloniza:20, suelta:5, contagio:0.25, difuminado:0.9, corriente:0.35};
+    let escala=1,W=0,H=0,DPR=1,time=0,col=0,ultimo=0,activo=false,ultT=performance.now();
     const rnd=(a,b)=>a+Math.random()*(b-a);
     // ruido suave (el mismo del original)
     const P=new Uint8Array(512);for(let i=0;i<256;i++)P[i]=i;for(let i=255;i>0;i--){const j=Math.random()*(i+1)|0;[P[i],P[j]]=[P[j],P[i]]}for(let i=0;i<256;i++)P[i+256]=P[i];
@@ -2367,7 +2367,7 @@
       const t=TIPOS[Math.random()*TIPOS.length|0], depth=Math.random();
       const c={t,x:0,y:0,z:depth, s:(t==='cadena'?rnd(2.5,4):rnd(1.6,4.2))*(0.45+depth*0.9),
         rot:rnd(0,Math.PI*2),vr:rnd(-.01,.01),ph:rnd(0,1e3),glow:0,
-        hue:t==='dino'?rnd(160,185):t==='coco'?rnd(55,90):rnd(70,120), n:t==='cadena'?(rnd(3,7)|0):t==='diatomea_c'?(rnd(8,14)|0):0};
+        hue:t==='dino'?rnd(178,196):t==='coco'?rnd(160,176):rnd(166,188), n:t==='cadena'?(rnd(3,7)|0):t==='diatomea_c'?(rnd(8,14)|0):0};
       c.t0=c.t;c.n0=c.n;c.m=1;c.hT=c.hue;c.vis=0; lugar(c); return c; }
     function infectar(c,o){c.t0=c.t;c.n0=c.n;c.t=o.t;c.n=o.n;c.hT=o.hT;c.m=0;c.glow=Math.max(c.glow,.35)}
     function contagiar(k){
@@ -2385,17 +2385,17 @@
       cv.width=W*DPR;cv.height=H*DPR;main.setTransform(DPR,0,0,DPR,0,0);
       layer.width=W*DPR;layer.height=H*DPR;lctx.setTransform(DPR,0,0,DPR,0,0);
       soft.width=Math.ceil(W/4);soft.height=Math.ceil(H/4); }
-    function drawCell(c,a){
-      const L=Math.min(1,c.glow), lum=55+c.z*14, edge=`hsla(${c.hue},70%,82%,${a*.6})`;
+    function drawCell(c0,a){
+      const c=Object.assign({},c0,{s:c0.s*escala}); const L=Math.min(1,c.glow), lum=55+c.z*14, edge=`hsla(${c.hue},70%,82%,${Math.min(.95,a*1.1)})`;   // contorno nítido: se lee sobre la piel sin brillo extra
       ctx.save();ctx.translate(c.x,c.y);ctx.rotate(c.rot);
       const R=c.s*(c.t==='diatomea_p'?2.9:c.t==='dino'?3:c.t==='cadena'?1.4:1.8);
       const base=ctx.createRadialGradient(-c.s*.3,-c.s*.3,0,0,0,R);
-      base.addColorStop(0,`hsla(${c.hue},60%,${lum+20}%,${a*.07})`);base.addColorStop(.65,`hsla(${c.hue},55%,${lum}%,${a*.18})`);base.addColorStop(1,`hsla(${c.hue},55%,${lum}%,${a*.38})`);
+      base.addColorStop(0,`hsla(${c.hue},70%,${lum+20}%,${a*.03})`);base.addColorStop(.65,`hsla(${c.hue},70%,${lum+10}%,${a*.08})`);base.addColorStop(1,`hsla(${c.hue},75%,${lum+15}%,${a*.22})`);
       if(L>.02){ctx.globalCompositeOperation='lighter';
-        const r=c.s*(6+L*10);const gg=ctx.createRadialGradient(0,0,0,0,0,r);
-        gg.addColorStop(0,`rgba(127,243,220,${.55*L*a})`);gg.addColorStop(1,'rgba(127,243,220,0)');
+        const r=c0.s*(5+L*8)*Math.sqrt(escala);const gg=ctx.createRadialGradient(0,0,0,0,0,r);
+        gg.addColorStop(0,`rgba(30,215,200,${.38*L*Math.max(a,.5)})`);gg.addColorStop(1,'rgba(30,215,200,0)');   // bioluminiscencia: cian sin rojo, al sumarse no quema
         ctx.fillStyle=gg;ctx.beginPath();ctx.arc(0,0,r,0,7);ctx.fill();ctx.globalCompositeOperation='source-over'}
-      ctx.lineWidth=Math.max(.4,c.s*.18);ctx.strokeStyle=edge;ctx.fillStyle=base;const s=c.s;
+      ctx.lineWidth=Math.max(.35,c.s*.12);ctx.strokeStyle=edge;ctx.fillStyle=base;const s=c.s;
       if(c.m>=1)forma(c.t,s,c.n,c);
       else{const m=fade(c.m);
         ctx.save();ctx.globalAlpha=1-m;ctx.scale(1-m*.35,1-m*.35);forma(c.t0,s,c.n0,c);ctx.restore();
@@ -2432,7 +2432,7 @@
       for(let i=0;i<21;i++){ const l=M.lm[i], v=M.vel&&M.vel[i];
         const x=sr.left+(l.x+(v?v.x*adel:0))*sr.width, y=sr.top+(l.y+(v?v.y*adel:0))*sr.height, q=Lp[i];
         if(!visto){ q.x=x; q.y=y; q.vx=q.vy=0; } else { const nx=q.x+(x-q.x)*0.6, ny=q.y+(y-q.y)*0.6; q.vx=nx-q.x; q.vy=ny-q.y; q.x=nx; q.y=ny; } }
-      if(!visto){ visto=true; [4,8,12,16,20].forEach(i=>poke(Lp[i].x,Lp[i].y,.7)); }
+      if(!visto){ visto=true; [4,8,12,16,20].forEach(i=>poke(Lp[i].x,Lp[i].y,.35)); }
       return true;
     }
     function pos(c){
@@ -2460,6 +2460,7 @@
       { const on=col>0.01; if(on!==frame.ui){ frame.ui=on; document.querySelectorAll('.mindar-ui-scanning').forEach(e=>{ e.style.visibility=on?'hidden':''; }); } }
       if(W!==innerWidth||H!==innerHeight) resize();
       time+=1; const cur=CFG.corriente, dt=1;
+      if(hay){ const pal=Math.hypot(Lp[9].x-Lp[0].x,Lp[9].y-Lp[0].y); escala+=(Math.min(1.3,Math.max(1,pal/180))-escala)*.1; }
       const sueltas=!hay;   // sin mano: las células se sueltan y caen como restos
       for(const c of cells){
         // deriva sobre la piel (la corriente del original, en las coordenadas de la mano)
@@ -2487,7 +2488,7 @@
       else main.drawImage(layer,0,0,W,H);
       main.globalCompositeOperation='lighter';
       for(let i=pulses.length-1;i>=0;i--){const p=pulses[i];p.r+=3;p.a*=.94;
-        main.beginPath();main.arc(p.x,p.y,p.r,0,7);main.strokeStyle=`rgba(127,243,220,${p.a*.35})`;main.lineWidth=1;main.stroke();
+        main.beginPath();main.arc(p.x,p.y,p.r,0,7);main.strokeStyle=`rgba(30,215,200,${p.a*.4})`;main.lineWidth=.8;main.stroke();
         if(p.a<.02)pulses.splice(i,1)}
       main.globalCompositeOperation='source-over';
     }
@@ -2613,12 +2614,14 @@
               float fase=dot(p.xy,vec2(0.78,0.62))*1.1+sn(vec3(p.xy,0.0)*2.6)*0.12;
               float fl=fract(fase-uTime*uLuzVel);
               float luzG=uLuz*grieta*(exp(-pow((fl-0.5)/0.07,2.0))+0.6*exp(-pow((fract(fl+0.5)-0.5)/0.05,2.0)))*(1.0-dd*0.5);
-              vC=mix(vC,vec3(1.0,0.97,0.88)*2.2,clamp(luzG,0.0,1.0));
+              vC*=0.86;   // exposición general más baja: la cámara ya aporta luz
+              vC=mix(vC,vec3(0.22,0.86,1.0),clamp(luzG*1.2,0.0,1.0));   // GLOW: la luz recorre las grietas en cian; no tiene rojo, así que nunca se vuelve blanca
+              { const float K=0.62, T=0.86; vec3 x=max(vC,0.0); vec3 hi=K+(T-K)*(1.0-exp(-(x-K)/(T-K))); vC=mix(x,hi,step(K,x)); }   // techo por canal: nada llega a blanco
               // GENERACIÓN POR CERCANÍA: lejos casi nada; al acercar el teléfono los puntos nacen sobre la imagen y crecen desde el papel
               float gk=clamp((uGen*1.15-r*0.9)/0.25,0.0,1.0);
               q.z*=mix(0.02,1.0,smoothstep(0.0,1.0,clamp(uGen*1.3-r*0.3,0.0,1.0)));
               vec4 mv=modelViewMatrix*vec4(q,1.0); float sc=length(vec3(modelViewMatrix[0][0],modelViewMatrix[0][1],modelViewMatrix[0][2]));
-              gl_PointSize=gk*clamp(uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8+luzG*1.6)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,10.0);
+              gl_PointSize=gk*clamp(0.8*uPunto*(1.0-dd*0.5+frente*0.9+ola*0.8+luzG*2.2)*sc*projectionMatrix[1][1]*uViewH*0.5/max(1e-4,abs(mv.z)),1.0,10.0);
               gl_Position=projectionMatrix*mv; }`,
           fragmentShader:`precision mediump float; varying vec3 vC; void main(){ vec2 q=gl_PointCoord-0.5; float e=dot(q,q); if(e>0.25) discard; gl_FragColor=vec4(vC*(1.0-e*1.2),1.0); }`}));
         this.pts.frustumCulled=false; this.pts.visible=this.running;
