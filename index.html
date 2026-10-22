@@ -2328,9 +2328,9 @@
   })();
   addEventListener('DOMContentLoaded',()=>{ let v=document.getElementById('hz-version'); if(!v){ v=document.createElement('div'); v.id='hz-version'; }
     v.style.cssText='position:fixed;left:8px;top:8px;z-index:99999;font:500 10px Menlo,monospace;color:#fff;opacity:.6;pointer-events:none';
-    v.textContent='v 20/10 21:00'; document.body.appendChild(v);
+    v.textContent='v 22/10 abismo'; document.body.appendChild(v);
     setInterval(()=>{ const M=window.HZMano; const e=M.err?'error':!M.cargando?'espera':!M.h?'cargando':(M.lm&&performance.now()-M.t<400)?'detectada':'buscando';
-      v.textContent='v 20/10 21:00 · mano: '+e; },500); });
+      v.textContent='v 22/10 abismo · mano: '+e; },500); });
   </script>
   <!-- FITOPLANCTON SOBRE LA MANO: cuando MediaPipe ve la mano, el fitoplancton abisal la coloniza.
        Las células (diatomeas, dinoflagelados, cocolitofóridos, cadenas) nacen en las yemas y avanzan hacia la muñeca,
@@ -2339,12 +2339,12 @@
   <script>
   window.HZPlancton=window.HZPlancton||(function(){
     const cv=document.createElement('canvas'); cv.id='hz-plancton';
-    cv.style.cssText='position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:99990;mix-blend-mode:screen';   // el plancton suma luz a la imagen de la cámara: no la tiñe como una mancha
+    cv.style.cssText='position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:99990';
     const main=cv.getContext('2d'); let ctx=main;
     const layer=document.createElement('canvas'), lctx=layer.getContext('2d');
     const soft=document.createElement('canvas'), sctx=soft.getContext('2d');
     const hasFilter=typeof main.filter==='string';
-    const CFG={celulas:220, coloniza:20, suelta:5, contagio:0.25, difuminado:0.9, corriente:0.35};
+    const CFG={congela:14,celulas:90, coloniza:20, suelta:5, contagio:0.25, difuminado:0.9, corriente:0.35};
     let escala=1,W=0,H=0,DPR=1,time=0,col=0,ultimo=0,activo=false,ultT=performance.now();
     const rnd=(a,b)=>a+Math.random()*(b-a);
     // ruido suave (el mismo del original)
@@ -2354,7 +2354,7 @@
     function noise(x,y){const X=Math.floor(x)&255,Y=Math.floor(y)&255;x-=Math.floor(x);y-=Math.floor(y);const u=fade(x),v=fade(y);
       const a=P[X]+Y,b=P[X+1]+Y;return lerp(lerp(grad(P[a],x,y),grad(P[b],x-1,y),u),lerp(grad(P[a+1],x,y-1),grad(P[b+1],x-1,y-1),u),v)}
     const TIPOS=['diatomea_c','diatomea_p','dino','coco','cadena'];
-    let cells=[],pulses=[],restos=[];
+    let cells=[],pulses=[],restos=[],nieve=[];
     // lugares de la mano: palma (cuadrilátero pulgar-muñeca / nudillos) y las tres falanges de cada dedo
     const dedos=[[[1,2],[2,3],[3,4]],[[5,6],[6,7],[7,8]],[[9,10],[10,11],[11,12]],[[13,14],[14,15],[15,16]],[[17,18],[18,19],[19,20]]];
     const tramos=[{k:'p',w:0.46}]; const pesoD=[0.11,0.12,0.13,0.12,0.09], parte=[0.42,0.32,0.26];
@@ -2367,15 +2367,15 @@
       const t=TIPOS[Math.random()*TIPOS.length|0], depth=Math.random();
       const c={t,x:0,y:0,z:depth, s:(t==='cadena'?rnd(2.5,4):rnd(1.6,4.2))*(0.45+depth*0.9),
         rot:rnd(0,Math.PI*2),vr:rnd(-.01,.01),ph:rnd(0,1e3),glow:0,
-        hue:t==='dino'?rnd(178,196):t==='coco'?rnd(160,176):rnd(166,188), n:t==='cadena'?(rnd(3,7)|0):t==='diatomea_c'?(rnd(8,14)|0):0};
-      c.t0=c.t;c.n0=c.n;c.m=1;c.hT=c.hue;c.vis=0; lugar(c); return c; }
+        hue:t==='dino'?rnd(160,185):t==='coco'?rnd(55,90):rnd(70,120), n:t==='cadena'?(rnd(3,7)|0):t==='diatomea_c'?(rnd(8,14)|0):0};
+      c.t0=c.t;c.n0=c.n;c.m=1;c.hT=c.hue;c.vis=0;c.via=-1;c.frio=0; lugar(c); return c; }
     function infectar(c,o){c.t0=c.t;c.n0=c.n;c.t=o.t;c.n=o.n;c.hT=o.hT;c.m=0;c.glow=Math.max(c.glow,.35)}
     function contagiar(k){
       if(k<=0||cells.length<2)return;
       const G=36,cols=Math.ceil(W/G)+3,grid=new Map();
       for(const c of cells){ if(c.vis<0.5) continue; const key=((c.x/G|0)+1)+((c.y/G|0)+1)*cols;let b=grid.get(key);if(!b)grid.set(key,b=[]);b.push(c)}
       const intentos=Math.min(cells.length,60+k*400|0);
-      for(let i=0;i<intentos;i++){const c=cells[Math.random()*cells.length|0];if(c.m<1||c.vis<0.5)continue;
+      for(let i=0;i<intentos;i++){const c=cells[Math.random()*cells.length|0];if(c.m<1||c.vis<0.5||c.frio>.4)continue;   // el hielo ya no se contagia
         const gx=(c.x/G|0)+1,gy=(c.y/G|0)+1;
         busca:for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){const b=grid.get(gx+dx+(gy+dy)*cols);if(!b)continue;
           for(const o of b){if(o===c||o.t===c.t||Math.abs(o.z-c.z)>.25)continue;
@@ -2386,16 +2386,16 @@
       layer.width=W*DPR;layer.height=H*DPR;lctx.setTransform(DPR,0,0,DPR,0,0);
       soft.width=Math.ceil(W/4);soft.height=Math.ceil(H/4); }
     function drawCell(c0,a){
-      const c=Object.assign({},c0,{s:c0.s*escala}); const L=Math.min(1,c.glow), lum=55+c.z*14, edge=`hsla(${c.hue},70%,82%,${Math.min(.95,a*1.1)})`;   // contorno nítido: se lee sobre la piel sin brillo extra
+      const c=Object.assign({},c0,{s:c0.s*escala}); const fr=c0.frio||0, sat=70-35*fr, hu=c.hue+(190-c.hue)*fr*.8; c.hue=hu; const L=Math.min(1,c.glow), lum=55+c.z*14+fr*8, edge=`hsla(${c.hue},${sat}%,${82+fr*6}%,${a*.6})`;   // contorno nítido: se lee sobre la piel sin brillo extra
       ctx.save();ctx.translate(c.x,c.y);ctx.rotate(c.rot);
       const R=c.s*(c.t==='diatomea_p'?2.9:c.t==='dino'?3:c.t==='cadena'?1.4:1.8);
       const base=ctx.createRadialGradient(-c.s*.3,-c.s*.3,0,0,0,R);
-      base.addColorStop(0,`hsla(${c.hue},70%,${lum+20}%,${a*.03})`);base.addColorStop(.65,`hsla(${c.hue},70%,${lum+10}%,${a*.08})`);base.addColorStop(1,`hsla(${c.hue},75%,${lum+15}%,${a*.22})`);
+      base.addColorStop(0,`hsla(${c.hue},${sat-10}%,${lum+20}%,${a*.07})`);base.addColorStop(.65,`hsla(${c.hue},${sat-15}%,${lum}%,${a*.18})`);base.addColorStop(1,`hsla(${c.hue},${sat-15}%,${lum}%,${a*.38})`);
       if(L>.02){ctx.globalCompositeOperation='lighter';
-        const r=c0.s*(5+L*8)*Math.sqrt(escala);const gg=ctx.createRadialGradient(0,0,0,0,0,r);
-        gg.addColorStop(0,`rgba(30,215,200,${.38*L*Math.max(a,.5)})`);gg.addColorStop(1,'rgba(30,215,200,0)');   // bioluminiscencia: cian sin rojo, al sumarse no quema
+        const r=c0.s*(6+L*10);const gg=ctx.createRadialGradient(0,0,0,0,0,r);
+        gg.addColorStop(0,`rgba(127,243,220,${.55*L})`);gg.addColorStop(1,'rgba(127,243,220,0)');
         ctx.fillStyle=gg;ctx.beginPath();ctx.arc(0,0,r,0,7);ctx.fill();ctx.globalCompositeOperation='source-over'}
-      ctx.lineWidth=Math.max(.35,c.s*.12);ctx.strokeStyle=edge;ctx.fillStyle=base;const s=c.s;
+      ctx.lineWidth=Math.max(.4,c.s*.18);ctx.strokeStyle=edge;ctx.fillStyle=base;const s=c.s;
       if(c.m>=1)forma(c.t,s,c.n,c);
       else{const m=fade(c.m);
         ctx.save();ctx.globalAlpha=1-m;ctx.scale(1-m*.35,1-m*.35);forma(c.t0,s,c.n0,c);ctx.restore();
@@ -2435,6 +2435,14 @@
       if(!visto){ visto=true; [4,8,12,16,20].forEach(i=>poke(Lp[i].x,Lp[i].y,.35)); }
       return true;
     }
+    // dónde está el glaciar (la tarjeta) en la pantalla: de ahí sale el plancton hacia la mano
+    const carta={x:0,y:0,r:80,ok:false};
+    function leerCarta(){ const sc=document.querySelector('a-scene'), cam=sc&&sc.camera, T=window.AFRAME&&AFRAME.THREE; if(!cam||!T) return;
+      const cr=sc.renderer?sc.renderer.domElement.getBoundingClientRect():{left:0,top:0,width:W,height:H};
+      for(const an of document.querySelectorAll('.hz-ancla,[mindar-image-target]')){ const o=an.object3D; if(!o||!o.visible) continue;
+        o.updateMatrixWorld(); const a=new T.Vector3(0,0,0).applyMatrix4(o.matrixWorld).project(cam), b=new T.Vector3(0.5,0,0).applyMatrix4(o.matrixWorld).project(cam);
+        if(a.z>1) continue; carta.x=cr.left+(a.x*.5+.5)*cr.width; carta.y=cr.top+(-a.y*.5+.5)*cr.height;
+        carta.r=Math.max(30,Math.hypot((b.x-a.x)*.5*cr.width,(b.y-a.y)*.5*cr.height)); carta.ok=true; return; } }
     function pos(c){
       const t=tramos[c.k];
       if(t.k==='p'){ const a=Lp[1],b=Lp[0], ps=c.u, pt=c.v;
@@ -2450,27 +2458,35 @@
     function frame(){
       requestAnimationFrame(frame);
       const ahora=performance.now(), st=Math.min(0.05,(ahora-ultT)/1000); ultT=ahora;
-      const hay=leerMano();
+      const hay=leerMano(); leerCarta();
       if(hay) ultimo=ahora;
       col=Math.max(0,Math.min(1,col+(hay?st/CFG.coloniza:-st/CFG.suelta)));
       if(typeof window.hzPlanctonForzar==='number') col=window.hzPlanctonForzar;
       if(col<=0&&!hay){ if(frame.ui){ frame.ui=false; document.querySelectorAll('.mindar-ui-scanning').forEach(e=>{ e.style.visibility=''; }); }
-        if(activo){ main.clearRect(0,0,W,H); activo=false; visto=false; cells.forEach(c=>{c.vis=0; lugar(c);}); } return; }
+        if(activo){ main.clearRect(0,0,W,H); activo=false; visto=false; cells.forEach(c=>{c.vis=0;c.via=-1;c.frio=0; lugar(c);}); } return; }
       if(!activo){ activo=true; if(W!==innerWidth||H!==innerHeight) resize(); }
       { const on=col>0.01; if(on!==frame.ui){ frame.ui=on; document.querySelectorAll('.mindar-ui-scanning').forEach(e=>{ e.style.visibility=on?'hidden':''; }); } }
       if(W!==innerWidth||H!==innerHeight) resize();
       time+=1; const cur=CFG.corriente, dt=1;
-      if(hay){ const pal=Math.hypot(Lp[9].x-Lp[0].x,Lp[9].y-Lp[0].y); escala+=(Math.min(1.3,Math.max(1,pal/180))-escala)*.1; }
+      if(hay){ const pal=Math.hypot(Lp[9].x-Lp[0].x,Lp[9].y-Lp[0].y); escala=1; }
       const sueltas=!hay;   // sin mano: las células se sueltan y caen como restos
       for(const c of cells){
         // deriva sobre la piel (la corriente del original, en las coordenadas de la mano)
-        const n=noise(c.u*3+time*.004+c.ph,c.v*3+c.ph*.37);
-        c.u+=Math.cos(n*Math.PI*2)*.0025*(.3+c.z*.9); c.v+=Math.sin(n*Math.PI*2)*.004*(.3+c.z);
+        const n=noise(c.u*3+time*.004+c.ph,c.v*3+c.ph*.37), vivo=1-c.frio;   // congelada, deja de derivar
+        c.u+=Math.cos(n*Math.PI*2)*.0025*(.3+c.z*.9)*vivo; c.v+=Math.sin(n*Math.PI*2)*.004*(.3+c.z)*vivo;
         if(tramos[c.k].k==='p'){ c.u=Math.min(1,Math.max(0,c.u)); c.v=Math.min(1,Math.max(0,c.v)); }
         else { if(c.u<0||c.u>1) c.u=Math.min(1,Math.max(0,c.u)); c.v=Math.max(-0.9,Math.min(0.9,c.v)); }
-        if(!sueltas) pos(c); else { c.y+=.4+c.z*.6; c.x+=Math.sin(time*.02+c.ph)*.3+cur*.4; }
-        const meta=col*1.1>c.g?1:0; c.vis+=(meta-c.vis)*.06;
-        c.rot+=c.vr; c.glow*=.965; if(Math.random()<.00015)c.glow=.6;
+        const meta=col*1.1>c.g?1:0;
+        if(meta&&c.via<0){ c.via=0; const an=Math.random()*6.283, rr=Math.sqrt(Math.random())*carta.r;
+          c.ox=(carta.ok?carta.x:W*.5)+Math.cos(an)*rr; c.oy=(carta.ok?carta.y:H*.85)+Math.sin(an)*rr*.7; }
+        if(!sueltas){ pos(c);
+          if(c.via>=0&&c.via<1){ c.via=Math.min(1,c.via+st/(2.2+c.ph%1.6)); const e=c.via*c.via*(3-2*c.via), dx=c.x-c.ox, dy=c.y-c.oy, dl=Math.hypot(dx,dy)||1;
+            const cur2=Math.sin(e*3.1416)*(noise(c.ph,time*.01)*.6+.25)*dl*.35;    // nada en curva, no en línea recta
+            c.x=c.ox+dx*e-dy/dl*cur2; c.y=c.oy+dy*e+dx/dl*cur2; }
+          else if(c.via>=1) c.frio=Math.min(1,c.frio+st/CFG.congela); }      // ya en la piel: de a poco se vuelve hielo
+        else { c.y+=.4+c.z*.6; c.x+=Math.sin(time*.02+c.ph)*.3+cur*.4; }
+        c.vis+=(meta-c.vis)*.06;
+        c.rot+=c.vr*(1-c.frio); c.glow*=.965; if(Math.random()<.00015)c.glow=.6;
         if(c.m<1)c.m=Math.min(1,c.m+.012*dt); c.hue+=(c.hT-c.hue)*.03;
       }
       // los dedos que se mueven encienden la bioluminiscencia, como el puntero en el original
@@ -2478,7 +2494,21 @@
         for(const c of cells){ const d=Math.hypot(c.x-q.x,c.y-q.y); if(d<60) c.glow=Math.max(c.glow,(1-d/60)*Math.min(1,sp/18)); } }
       contagiar(CFG.contagio);
       cells.sort((a,b)=>a.z-b.z);
-      main.clearRect(0,0,W,H); lctx.clearRect(0,0,W,H); ctx=lctx;
+      main.clearRect(0,0,W,H);
+      if(visto){ const va=Math.min(1,col*2.2)*0.62, pal=Math.hypot(Lp[9].x-Lp[0].x,Lp[9].y-Lp[0].y);
+        main.save(); if(hasFilter) main.filter=`blur(${Math.max(6,pal*.08)}px)`;
+        main.fillStyle=main.strokeStyle=`rgba(2,20,28,${va})`; main.lineCap=main.lineJoin='round';
+        main.beginPath(); [0,1,5,9,13,17].forEach((k,i)=>i?main.lineTo(Lp[k].x,Lp[k].y):main.moveTo(Lp[k].x,Lp[k].y)); main.closePath(); main.fill();
+        for(const f of [[1,2,3,4],[5,6,7,8],[9,10,11,12],[13,14,15,16],[17,18,19,20]]){ main.lineWidth=pal*(f[0]===1?.26:.21); main.beginPath(); f.forEach((k,i)=>i?main.lineTo(Lp[k].x,Lp[k].y):main.moveTo(Lp[k].x,Lp[k].y)); main.stroke(); }
+        main.restore(); }
+      if(visto){ if(!nieve.length) for(let i=0;i<70;i++) nieve.push({u:Math.random(),v:Math.random(),r:rnd(.4,1.8),w:rnd(0,6),vv:rnd(.0006,.002)});
+        const A=Lp[1],B=Lp[0];
+        for(const s of nieve){ s.v-=s.vv*(1-0.6*(cells[0]?cells[0].frio:0)); if(s.v<0){s.v=1;s.u=Math.random();} s.u+=Math.sin(time*.01+s.w)*.0008;
+          const ps=Math.min(1,Math.max(0,s.u)), bx=A.x+(B.x-A.x)*ps, by=A.y+(B.y-A.y)*ps;
+          const sg=ps<1/3?[5,9,ps*3]:ps<2/3?[9,13,ps*3-1]:[13,17,ps*3-2], P1=Lp[sg[0]], P2=Lp[sg[1]], tx=P1.x+(P2.x-P1.x)*sg[2], ty=P1.y+(P2.y-P1.y)*sg[2];
+          const k=1.25-s.v*1.4, x=bx+(tx-bx)*k, y=by+(ty-by)*k;   // de la muñeca hacia más allá de los dedos
+          main.fillStyle=`rgba(200,230,225,${(.15+s.r*.12)*Math.min(1,col*2)})`; main.fillRect(x,y,s.r,s.r); } }
+      lctx.clearRect(0,0,W,H); ctx=lctx;
       for(const c of cells){ const a=(.22+c.z*.7)*c.vis*Math.min(1,col*3); if(a>.005) drawCell(c,a); }
       ctx=main;
       const blurPx=CFG.difuminado;
@@ -2488,7 +2518,7 @@
       else main.drawImage(layer,0,0,W,H);
       main.globalCompositeOperation='lighter';
       for(let i=pulses.length-1;i>=0;i--){const p=pulses[i];p.r+=3;p.a*=.94;
-        main.beginPath();main.arc(p.x,p.y,p.r,0,7);main.strokeStyle=`rgba(30,215,200,${p.a*.4})`;main.lineWidth=.8;main.stroke();
+        main.beginPath();main.arc(p.x,p.y,p.r,0,7);main.strokeStyle=`rgba(127,243,220,${p.a*.35})`;main.lineWidth=1;main.stroke();
         if(p.a<.02)pulses.splice(i,1)}
       main.globalCompositeOperation='source-over';
     }
