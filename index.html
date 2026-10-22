@@ -2308,7 +2308,7 @@
       if(M.cargando) return; M.cargando=true;
       const s=document.createElement('script'); s.src=CDN+'hands.js'; s.crossOrigin='anonymous';
       s.onload=()=>{ try{ const h=new Hands({locateFile:f=>CDN+f});
-        h.setOptions({maxNumHands:1,modelComplexity:1,minDetectionConfidence:0.4,minTrackingConfidence:0.4,selfieMode:false});   // más tolerante: el dorso de la mano y la poca luz también cuentan
+        h.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:0.4,minTrackingConfidence:0.4,selfieMode:false});   // más tolerante: el dorso de la mano y la poca luz también cuentan
         h.onResults(r=>{ const L=(r.multiHandLandmarks&&r.multiHandLandmarks[0])||null, ahora=performance.now();
           if(L&&M.lm&&ahora-M.t<200){ const dt=Math.max(16,ahora-M.t); M.vel=L.map((p,i)=>({x:(p.x-M.lm[i].x)/dt,y:(p.y-M.lm[i].y)/dt})); } else M.vel=null;
           M.lm=L; M.t=ahora; });
@@ -2328,9 +2328,9 @@
   })();
   addEventListener('DOMContentLoaded',()=>{ let v=document.getElementById('hz-version'); if(!v){ v=document.createElement('div'); v.id='hz-version'; }
     v.style.cssText='position:fixed;left:8px;top:8px;z-index:99999;font:500 10px Menlo,monospace;color:#fff;opacity:.6;pointer-events:none';
-    v.textContent='v 22/10 piel'; document.body.appendChild(v);
+    v.textContent='v 22/10 20:00'; document.body.appendChild(v);
     setInterval(()=>{ const M=window.HZMano; const e=M.err?'error':!M.cargando?'espera':!M.h?'cargando':(M.lm&&performance.now()-M.t<400)?'detectada':'buscando';
-      v.textContent='v 22/10 piel · mano: '+e; },500); });
+      v.textContent='v 22/10 20:00 · mano: '+e; },500); });
   </script>
   <!-- LA MANO SE VUELVE PAISAJE: cuando el teléfono ve el trigger y la mano, la obra "Fitoplancton abisal" corre tal cual
        (su código, sus colores, sus formas, su agua) y aparece dentro de la silueta de la mano. Entra por las yemas y avanza
@@ -2345,7 +2345,7 @@ const soft=document.createElement('canvas');const sctx=soft.getContext('2d');
 const hasFilter=typeof main.filter==='string';
 let W,H,DPR,floorY,sand,time=0;
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
-const VAL={dens:1100,corr:35,turb:20,luz:55,blur:9,cont:25,vida:45};
+const VAL={dens:480,corr:35,turb:20,luz:55,blur:9,cont:25,vida:45};
 const $=id=>(id in VAL)?{value:VAL[id],addEventListener(){}}:{textContent:'',addEventListener(){},set textContent(v){}};
 const rnd=(a,b)=>a+Math.random()*(b-a);
 
@@ -2409,7 +2409,7 @@ function contagiar(k){
 function mkSnow(){return{x:rnd(0,W),y:rnd(-H,floorY),r:rnd(.4,1.8),v:rnd(.08,.35),w:rnd(0,6)}}
 
 function resize(){
-  DPR=Math.min(devicePixelRatio||1,1.5);W=innerWidth;H=innerHeight;
+  DPR=0.75;W=innerWidth;H=innerHeight;
   cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
   layer.width=W*DPR;layer.height=H*DPR;lctx.setTransform(DPR,0,0,DPR,0,0);
   soft.width=Math.ceil(W/4);soft.height=Math.ceil(H/4);
@@ -2596,10 +2596,10 @@ return {cv,resize,frame,poke:(x,y,f)=>poke(x,y,f),get W(){return W}};
     const ov=document.createElement('canvas'); ov.id='hz-plancton';
     ov.style.cssText='position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:99990';
     const o=ov.getContext('2d'), mk=document.createElement('canvas'), m=mk.getContext('2d'), hasF=typeof o.filter==='string';
-    const CFG={coloniza:32, suelta:6};
+    const CFG={coloniza:22, suelta:6};
     let col=0, visto=false, Wo=0, Ho=0, D=1, ultT=performance.now(), activo=false;
     const Lp=[]; for(let i=0;i<21;i++) Lp.push({x:0,y:0,vx:0,vy:0});
-    function tam(){ D=Math.min(devicePixelRatio||1,1.5); Wo=innerWidth; Ho=innerHeight; ov.width=Wo*D; ov.height=Ho*D; mk.width=Math.ceil(Wo/3); mk.height=Math.ceil(Ho/3); m.imageSmoothingEnabled=true;
+    function tam(){ D=Math.min(devicePixelRatio||1,1.5); Wo=innerWidth; Ho=innerHeight; ov.width=Wo*D; ov.height=Ho*D; mk.width=Math.ceil(Wo/4); mk.height=Math.ceil(Ho/4); m.imageSmoothingEnabled=true;
       o.setTransform(D,0,0,D,0,0); m.setTransform(1/3,0,0,1/3,0,0); }
     function leerMano(){
       const M=window.HZMano; if(!M||!M.lm||!M.src||performance.now()-M.t>400) return false;
@@ -2624,7 +2624,7 @@ return {cv,resize,frame,poke:(x,y,f)=>poke(x,y,f),get W(){return W}};
     const croma=(r,g,b)=>[0.5*r-0.4187*g-0.0813*b, -0.1687*r-0.3313*g+0.5*b];
     function mascara(){
       const M=window.HZMano, src=M&&M.src; if(!src) return;
-      const E=3, w=mk.width, h=mk.height; if(cv2.width!==w||cv2.height!==h){ cv2.width=w; cv2.height=h; }
+      const E=4, w=mk.width, h=mk.height; if(cv2.width!==w||cv2.height!==h){ cv2.width=w; cv2.height=h; }
       const sr=src.getBoundingClientRect(); c2.clearRect(0,0,w,h);
       try{ c2.drawImage(src,sr.left/E,sr.top/E,sr.width/E,sr.height/E); }catch(e){ return; }
       let px; try{ px=c2.getImageData(0,0,w,h); }catch(e){ return; }
@@ -2649,7 +2649,8 @@ return {cv,resize,frame,poke:(x,y,f)=>poke(x,y,f),get W(){return W}};
         const k=(y*w+x)*4, c=croma(d[k],d[k+1],d[k+2]), dc=Math.hypot(c[0]-ref[0],c[1]-ref[1]);
         const piel=nr?Math.max(0,Math.min(1,(22-dc)/10)):1;        // parecido al color de la piel medida
         const cerca=best<0.55?1:Math.max(0,(1.25-best)/0.7);        // el centro del dedo siempre cuenta
-        const en=Math.max(piel*cerca, (si<15&&best<0.45)?1:0);   // en los dedos el centro siempre cuenta; en la palma decide la piel
+        const punta=si<15&&(Math.floor(si)%3===2)&&(si%1)>0.75;
+        const en=Math.max(piel*cerca, (si<15&&best<0.45&&!punta)?1:0);   // en los dedos el centro siempre cuenta; en la palma decide la piel
         if(en<=0) continue;
         const ruido=vn(si*2.3,lat*3)*0.10+vn(si*7.1+3,lat*9)*0.04;  // borde del avance irregular
         const a=Math.max(0,Math.min(1,(fr-g-ruido+0.07)/0.06));
@@ -2668,9 +2669,9 @@ return {cv,resize,frame,poke:(x,y,f)=>poke(x,y,f),get W(){return W}};
       if(!on){ if(!hay) visto=false; return; }
       if(Wo!==innerWidth||Ho!==innerHeight){ tam(); ABISMO.resize(); }
       // los dedos que se mueven encienden la bioluminiscencia de la obra
-      if(hay) for(const i of [4,8,12,16,20]){ const q=Lp[i]; if(Math.hypot(q.vx,q.vy)>4) ABISMO.poke(q.x,q.y,.35); }
+      if(hay) for(const i of [4,8,12,16,20]){ const q=Lp[i]; q.cd=(q.cd||0)-st; if(Math.hypot(q.vx,q.vy)>22&&q.cd<=0){ ABISMO.poke(q.x,q.y,.25); q.cd=0.8; } }
       ABISMO.frame();
-      mascara();
+      if((cuadro.n=(cuadro.n||0)+1)%2===0) mascara();
       o.setTransform(1,0,0,1,0,0); o.globalCompositeOperation='source-over'; o.clearRect(0,0,ov.width,ov.height);
       o.drawImage(ABISMO.cv,0,0,ov.width,ov.height);
       o.globalCompositeOperation='destination-in'; o.imageSmoothingEnabled=true; o.imageSmoothingQuality='high'; o.drawImage(mk,0,0,ov.width,ov.height); o.globalCompositeOperation='source-over'; o.setTransform(D,0,0,D,0,0);
@@ -3005,7 +3006,7 @@ return {cv,resize,frame,poke:(x,y,f)=>poke(x,y,f),get W(){return W}};
     tick(t,dt){
       this.pasoMano(Math.min(0.05,(dt||16)/1000));
       if(!this.running){ if(this.anchor.components&&this.anchor.components['mindar-image-target']&&this.anchor.object3D.visible) this.start(); if(!this.running) return; }
-      if(!this.pts) return; if(!this.pts.visible&&!(this.manoPts&&this.manoPts.visible)) this.pts.visible=true;
+      if(!this.pts) return; { const mA=window.HZMano&&HZMano.lm&&performance.now()-HZMano.t<400; if(mA&&this.u.uGen.value<0.05){ this.pts.visible=false; } else if(!this.pts.visible&&!(this.manoPts&&this.manoPts.visible)) this.pts.visible=true; }
       const d=this.data, st=Math.min(0.05,(dt||16)/1000); this.t+=st;
       // movimiento de quien mira: cuánto gira la dirección de la cámara vista desde la escena
       const cam=this.el.sceneEl.camera;
