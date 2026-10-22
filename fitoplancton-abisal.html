@@ -1,0 +1,397 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Fitoplancton abisal</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+/* Layout: lienzo a sangre completa, una franja mínima de control flotando abajo a la izquierda */
+:root{
+  --abismo:#02080d; --agua:#06222b; --biolum:#7ff3dc; --clorofila:#9fd36a; --tinta:#cfe6e4; --tenue:#5d8389;
+  --display:"Fraunces", Georgia, serif; --mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme:dark;
+}
+html,body{height:100%;background:var(--abismo);color:var(--tinta);overflow:hidden}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+.hud{position:fixed;left:0;bottom:0;display:flex;flex-direction:column;gap:10px;
+  padding-left:max(16px, env(safe-area-inset-left,0px));padding-right:max(16px, env(safe-area-inset-right,0px));
+  padding-block:16px calc(16px + env(safe-area-inset-bottom,0px));max-width:100%;pointer-events:none}
+.hud h1{font:300 clamp(22px,4vw,34px)/1 var(--display);letter-spacing:.01em;margin:0;text-wrap:balance}
+.hud p{font:400 11px/1.5 var(--mono);color:var(--tenue);margin:0;letter-spacing:.06em;text-transform:uppercase}
+.ctl{display:flex;flex-wrap:wrap;gap:8px 18px;pointer-events:auto;font:400 11px var(--mono);color:var(--tenue);letter-spacing:.05em}
+.ctl label{display:flex;align-items:center;gap:8px}
+.ctl input[type=range]{width:96px;accent-color:var(--biolum)}
+.ctl button{font:inherit;color:var(--tinta);background:transparent;border:1px solid var(--tenue);padding:4px 10px;cursor:pointer;letter-spacing:.08em}
+.ctl button:focus-visible,.ctl input:focus-visible{outline:1px solid var(--biolum);outline-offset:2px}
+#prof{font-variant-numeric:tabular-nums;color:var(--biolum)}
+.hud{transition:opacity .6s ease}
+.sincursor canvas{cursor:none}
+.limpio .hud{opacity:0}
+.limpio .ctl{pointer-events:none}
+.atajo{color:var(--tenue);opacity:.7}
+</style>
+
+<canvas id="c" aria-label="Simulación de fitoplancton y fondo marino"></canvas>
+<div class="hud">
+  <h1>Fitoplancton abisal</h1>
+  <p>profundidad <span id="prof">−212 m</span> · población <span id="poblacion">0</span> · la mano estimula la vida</p>
+  <div class="ctl">
+    <label for="dens">capacidad <input id="dens" type="range" min="200" max="2400" value="1100"></label>
+    <label for="corr">corriente <input id="corr" type="range" min="0" max="100" value="35"></label>
+    <label for="turb">turbidez <input id="turb" type="range" min="0" max="100" value="20"></label>
+    <label for="luz">luz cenital <input id="luz" type="range" min="0" max="100" value="55"></label>
+    <label for="blur">difuminado <input id="blur" type="range" min="0" max="30" value="9"></label>
+    <label for="cont">contagio <input id="cont" type="range" min="0" max="100" value="25"></label>
+    <label for="vida">vida <input id="vida" type="range" min="4" max="121" value="45"> <span id="vidaV">45 s</span></label>
+    <button id="cur" type="button">ocultar cursor</button>
+    <button id="hud" type="button">ocultar interfaz</button>
+    <button id="fs" type="button">pantalla completa</button>
+    <span class="atajo">teclas C · H · doble clic vuelve la interfaz</span>
+  </div>
+</div>
+
+<script>
+const cv=document.getElementById('c');let ctx=cv.getContext('2d');const main=ctx;
+const layer=document.createElement('canvas');const lctx=layer.getContext('2d');
+const soft=document.createElement('canvas');const sctx=soft.getContext('2d');
+const hasFilter=typeof main.filter==='string';
+let W,H,DPR,floorY,sand,time=0;
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $=id=>document.getElementById(id);
+const rnd=(a,b)=>a+Math.random()*(b-a);
+
+// ruido suave 1D/2D barato
+const P=new Uint8Array(512);for(let i=0;i<256;i++)P[i]=i;for(let i=255;i>0;i--){const j=Math.random()*(i+1)|0;[P[i],P[j]]=[P[j],P[i]]}for(let i=0;i<256;i++)P[i+256]=P[i];
+const fade=t=>t*t*t*(t*(t*6-15)+10),lerp=(a,b,t)=>a+(b-a)*t;
+function grad(h,x,y){const g=h&3;return((g&1)?-x:x)+((g&2)?-y:y)}
+function noise(x,y){const X=Math.floor(x)&255,Y=Math.floor(y)&255;x-=Math.floor(x);y-=Math.floor(y);const u=fade(x),v=fade(y);
+  const a=P[X]+Y,b=P[X+1]+Y;return lerp(lerp(grad(P[a],x,y),grad(P[b],x-1,y),u),lerp(grad(P[a+1],x,y-1),grad(P[b+1],x-1,y-1),u),v)}
+
+// tipos de fitoplancton
+const TIPOS=['diatomea_c','diatomea_p','dino','coco','cadena'];
+let cells=[],snow=[],pulses=[],weeds=[],restos=[],lodo=[];
+let turbG=0;
+// ECOLOGÍA: la población crece de forma progresiva y retiene las huellas de la mano.
+const eco={energy:0, heritage:0, elapsed:0, births:0, deaths:0,
+  lastFrame:performance.now(), lastHand:0, lastGrowth:0};
+const capacity=()=>Math.max(200,+$('dens').value);
+const initialPopulation=()=>Math.max(45,Math.round(capacity()*.14));
+function hija(parent){
+  const c=mkCell();
+  if(parent){
+    c.t=c.t0=parent.t;c.n=c.n0=parent.n;
+    c.hue=c.hT=parent.hT;
+    c.x=Math.max(0,Math.min(W,parent.x+rnd(-22,22)));
+    c.y=Math.max(0,Math.min(floorY-2,parent.y+rnd(-22,22)));
+    c.z=Math.max(0,Math.min(1,parent.z+rnd(-.09,.09)));
+    c.s=parent.s*rnd(.8,1.12);
+    // Mutaciones raras mantienen la diversidad de formas sin cambios arbitrarios masivos.
+    if(Math.random()<.07){let q=mkCell();c.t=c.t0=q.t;c.n=c.n0=q.n;c.hue=c.hT=q.hue;}
+  }
+  c.age=0;c.lf=rnd(.85,1.35);c.glow=Math.max(c.glow,.12);
+  return c;
+}
+function growEcosystem(now){
+  const dt=Math.min(.12,Math.max(0,(now-eco.lastFrame)/1000));
+  eco.lastFrame=now;eco.elapsed+=dt;
+  // Lento al comienzo; un gesto acelera temporalmente el crecimiento.
+  eco.energy=Math.max(0,eco.energy-dt*.065);
+  const cap=capacity();
+  const naturalTarget=cap*(.14+.64*(1-Math.exp(-eco.elapsed/260)));
+  const desired=Math.min(cap,Math.round(naturalTarget+eco.heritage));
+  const headroom=Math.max(0,1-cells.length/cap);
+  const birthRate=(.7+eco.energy*5.8)*headroom;
+  eco.births+=birthRate*dt;
+  const num=Math.min(6,Math.floor(eco.births),Math.max(0,desired-cells.length));
+  for(let i=0;i<num;i++){
+    const parent=cells.length?cells[Math.random()*cells.length|0]:null;
+    cells.push(hija(parent));
+    eco.births-=1;
+  }
+  // La mortandad ocasional mantiene la población sana sin vaciarla de golpe.
+  eco.deaths+=(cells.length>desired? .28: .015)*dt;
+  if(eco.deaths>=1 && cells.length>initialPopulation()){
+    const idx=Math.random()*cells.length|0;
+    const c=cells[idx];
+    if(restos.length<700)restos.push({x:c.x,y:c.y,r:Math.max(.6,c.s*.35),v:rnd(.25,.6),a:.5,h:c.hue});
+    cells.splice(idx,1);eco.deaths-=1;
+  }
+  if(cells.length>=desired)eco.births=Math.min(eco.births,1);
+  $('poblacion').textContent=cells.length+' / '+cap;
+}
+function stimulateLife(x,y,force){
+  if(!Number.isFinite(x)||!Number.isFinite(y))return;
+  const now=performance.now();
+  if(now-eco.lastGrowth<140)return;
+  eco.lastGrowth=now;
+  const f=Math.max(.1,Math.min(1.8,force));
+  eco.energy=Math.min(2.8,eco.energy+.12*f);
+  // Memoria biológica persistente por visita, sin superar la capacidad.
+  eco.heritage=Math.min(capacity()*.22,eco.heritage+1.2*f);
+  poke(x,y,Math.min(1.6,.65+f*.45));
+}
+// vida en segundos; el tope del slider equivale a inmortal
+const vidaSeg=()=>{const v=+$('vida').value;return v>=121?Infinity:v};
+
+function mkCell(){
+  const t=TIPOS[Math.random()*TIPOS.length|0];
+  const depth=Math.random();
+  const c={t,x:rnd(0,W),y:rnd(0,floorY),z:depth,// z: 0 lejos, 1 cerca
+    s:(t==='cadena'?rnd(2.5,4):rnd(1.6,4.2))*(0.45+depth*0.9),
+    rot:rnd(0,Math.PI*2),vr:rnd(-.01,.01),ph:rnd(0,1e3),glow:0,
+    hue:t==='dino'?rnd(160,185):t==='coco'?rnd(55,90):rnd(70,120),
+    n:t==='cadena'?(rnd(3,7)|0):t==='diatomea_c'?(rnd(8,14)|0):0};
+  // forma previa (para la metamorfosis), tono objetivo, longevidad individual y edad inicial escalonada
+  c.t0=c.t;c.n0=c.n;c.m=1;c.hT=c.hue;c.lf=rnd(.6,1.4);
+  c.age=rnd(0,.9)*c.lf*Math.min(vidaSeg(),60)*60;
+  return c;
+}
+function mkLodo(){return{x:rnd(0,W),y:rnd(floorY*.25,floorY+10),r:rnd(.5,2.4),ph:rnd(0,9)}}
+
+// muerte: el cuerpo cae como resto orgánico y el lugar lo ocupa una célula nueva,
+// muchas veces hija por división de otra (hereda su forma)
+function morir(c){
+  if(restos.length<700)restos.push({x:c.x,y:c.y,r:Math.max(.6,c.s*.35),v:rnd(.25,.6),a:.5,h:c.hue});
+  const nc=mkCell();
+  if(Math.random()<.6&&cells.length>1){const p=cells[Math.random()*cells.length|0];
+    nc.t=nc.t0=p.t;nc.n=nc.n0=p.n;nc.hue=nc.hT=p.hT;
+    nc.x=p.x+rnd(-14,14);nc.y=p.y+rnd(-14,14);nc.z=Math.min(1,Math.max(0,p.z+rnd(-.05,.05)));nc.s=p.s*rnd(.85,1.1)}
+  nc.age=0;Object.assign(c,nc);
+}
+function vitalidad(c,vs){
+  const fin=Math.min(1,c.age/90);if(vs===Infinity)return fin;
+  const life=c.lf*vs*60;return fin*Math.max(0,Math.min(1,(life-c.age)/Math.min(120,life*.25)));
+}
+
+// contagio: una célula cercana (a profundidad parecida) puede adoptar la forma de su vecina
+function infectar(c,o){c.t0=c.t;c.n0=c.n;c.t=o.t;c.n=o.n;c.hT=o.hT;c.m=0;c.glow=Math.max(c.glow,.35)}
+function contagiar(k){
+  if(k<=0||cells.length<2)return;
+  const G=36,cols=Math.ceil(W/G)+3,grid=new Map();
+  for(const c of cells){const key=((c.x/G|0)+1)+((c.y/G|0)+1)*cols;let b=grid.get(key);if(!b)grid.set(key,b=[]);b.push(c)}
+  const intentos=Math.min(cells.length,60+k*400|0);
+  for(let i=0;i<intentos;i++){const c=cells[Math.random()*cells.length|0];if(c.m<1)continue;
+    const gx=(c.x/G|0)+1,gy=(c.y/G|0)+1;
+    busca:for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){const b=grid.get(gx+dx+(gy+dy)*cols);if(!b)continue;
+      for(const o of b){if(o===c||o.t===c.t||Math.abs(o.z-c.z)>.25)continue;
+        if(Math.hypot(o.x-c.x,o.y-c.y)<G&&Math.random()<k*k*.5){infectar(c,o);break busca}}}}
+}
+function mkSnow(){return{x:rnd(0,W),y:rnd(-H,floorY),r:rnd(.4,1.8),v:rnd(.08,.35),w:rnd(0,6)}}
+
+function resize(){
+  DPR=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;
+  cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
+  layer.width=W*DPR;layer.height=H*DPR;lctx.setTransform(DPR,0,0,DPR,0,0);
+  soft.width=Math.ceil(W/4);soft.height=Math.ceil(H/4);
+  floorY=H*0.78;
+  buildFloor();
+  const oldCells=cells;
+  cells=oldCells.length?oldCells.map(c=>{
+    c.x=Math.max(0,Math.min(W,c.x));c.y=Math.max(0,Math.min(floorY-5,c.y));return c;
+  }):Array.from({length:initialPopulation()},()=>hija(null));
+  if(cells.length>capacity())cells.length=capacity();
+  snow=Array.from({length:Math.round(W*H/2600)},mkSnow);
+  lodo=Array.from({length:Math.round(W*H/900)},mkLodo);restos=[];
+  weeds=Array.from({length:Math.round(W/38)},()=>({x:rnd(0,W),h:rnd(18,70),seg:(rnd(5,10)|0),ph:rnd(0,9),c:rnd(0,1)}));
+}
+
+// fondo marino pre-renderizado: sedimento, ripples, piedras, diatomeas muertas
+function buildFloor(){
+  sand=document.createElement('canvas');sand.width=W*DPR;sand.height=H*DPR;
+  const g=sand.getContext('2d');g.setTransform(DPR,0,0,DPR,0,0);
+  const top=x=>floorY+noise(x*.004,1.3)*26+noise(x*.02,4)*5;
+  g.beginPath();g.moveTo(0,H);for(let x=0;x<=W;x+=4)g.lineTo(x,top(x));g.lineTo(W,H);g.closePath();
+  const gr=g.createLinearGradient(0,floorY-30,0,H);gr.addColorStop(0,'#123139');gr.addColorStop(.35,'#0a1f25');gr.addColorStop(1,'#040d10');
+  g.fillStyle=gr;g.fill();g.save();g.clip();
+  // ondulitas de arena
+  for(let i=0;i<70;i++){const y0=rnd(floorY,H);g.beginPath();
+    for(let x=0;x<=W;x+=6){const y=y0+Math.sin(x*.035+i)*2+noise(x*.01,i)*6;x?g.lineTo(x,y):g.moveTo(x,y)}
+    g.strokeStyle=`rgba(120,170,170,${rnd(.02,.06)})`;g.lineWidth=rnd(.5,1.4);g.stroke()}
+  // grano
+  for(let i=0;i<W*H*.012;i++){const x=rnd(0,W),y=rnd(floorY-20,H);if(y<top(x))continue;
+    g.fillStyle=`rgba(${rnd(120,200)|0},${rnd(170,210)|0},${rnd(170,200)|0},${rnd(.03,.12)})`;g.fillRect(x,y,1,1)}
+  // piedras y valvas
+  for(let i=0;i<W/28;i++){const x=rnd(0,W),y=top(x)+rnd(4,(H-floorY)*.8),r=rnd(3,16)*(0.5+(y-floorY)/(H-floorY));
+    g.beginPath();g.ellipse(x,y,r,r*rnd(.4,.6),rnd(-.3,.3),0,7);g.fillStyle=`rgba(20,45,50,${rnd(.6,.9)})`;g.fill();
+    g.beginPath();g.ellipse(x-r*.2,y-r*.18,r*.6,r*.18,0,0,7);g.fillStyle='rgba(140,200,200,.05)';g.fill()}
+  for(let i=0;i<W/14;i++){const x=rnd(0,W),y=top(x)+rnd(2,(H-floorY)*.9),r=rnd(1.2,3.5);
+    g.beginPath();g.arc(x,y,r,0,7);g.strokeStyle='rgba(180,220,200,.12)';g.lineWidth=.6;g.stroke();
+    for(let k=0;k<6;k++){const a=k/6*Math.PI*2;g.beginPath();g.moveTo(x,y);g.lineTo(x+Math.cos(a)*r,y+Math.sin(a)*r);g.stroke()}}
+  g.restore();
+  sand.top=top;
+}
+
+function drawCell(c,a){
+  const L=Math.min(1,c.glow);
+  const lum=55+c.z*14;
+  const edge=`hsla(${c.hue},70%,82%,${a*.6})`;
+  ctx.save();ctx.translate(c.x,c.y);ctx.rotate(c.rot);
+  // relleno translúcido tipo vidrio: centro casi transparente, borde más denso
+  const R=c.s*(c.t==='diatomea_p'?2.9:c.t==='dino'?3:c.t==='cadena'?1.4:1.8);
+  const base=ctx.createRadialGradient(-c.s*.3,-c.s*.3,0,0,0,R);
+  base.addColorStop(0,`hsla(${c.hue},60%,${lum+20}%,${a*.07})`);
+  base.addColorStop(.65,`hsla(${c.hue},55%,${lum}%,${a*.18})`);
+  base.addColorStop(1,`hsla(${c.hue},55%,${lum}%,${a*.38})`);
+  if(L>.02){ctx.globalCompositeOperation='lighter';
+    const r=c.s*(6+L*10)*(1+turbG*.6);const gg=ctx.createRadialGradient(0,0,0,0,0,r);
+    gg.addColorStop(0,`rgba(127,243,220,${.55*L})`);gg.addColorStop(1,'rgba(127,243,220,0)');
+    ctx.fillStyle=gg;ctx.beginPath();ctx.arc(0,0,r,0,7);ctx.fill();ctx.globalCompositeOperation='source-over'}
+  ctx.lineWidth=Math.max(.4,c.s*.18);ctx.strokeStyle=edge;ctx.fillStyle=base;const s=c.s;
+  if(c.m>=1)forma(c.t,s,c.n,c);
+  else{// metamorfosis: la forma vieja se contrae y se apaga mientras la nueva crece
+    const m=fade(c.m);
+    ctx.save();ctx.globalAlpha=1-m;ctx.scale(1-m*.35,1-m*.35);forma(c.t0,s,c.n0,c);ctx.restore();
+    ctx.save();ctx.globalAlpha=m;const k=.65+m*.35;ctx.scale(k,k);forma(c.t,s,c.n,c);ctx.restore()}
+  ctx.restore();
+}
+
+function forma(t,s,n,c){
+  switch(t){
+    case 'diatomea_c': // céntrica: disco con estrías radiales
+      ctx.beginPath();ctx.arc(0,0,s*1.6,0,7);ctx.fill();ctx.stroke();
+      if(s>2){ctx.beginPath();for(let i=0;i<n;i++){const an=i/n*Math.PI*2;ctx.moveTo(Math.cos(an)*s*.5,Math.sin(an)*s*.5);ctx.lineTo(Math.cos(an)*s*1.5,Math.sin(an)*s*1.5)}ctx.lineWidth=.35;ctx.stroke()}break;
+    case 'diatomea_p': // pennada: navícula
+      ctx.beginPath();ctx.ellipse(0,0,s*2.8,s*.7,0,0,7);ctx.fill();ctx.stroke();
+      if(s>2){ctx.beginPath();ctx.moveTo(-s*2.4,0);ctx.lineTo(s*2.4,0);ctx.lineWidth=.35;ctx.stroke()}break;
+    case 'dino': // dinoflagelado con cuernos y flagelo
+      ctx.beginPath();ctx.moveTo(0,-s*3);ctx.quadraticCurveTo(s*1.4,-s*.6,s*1.2,s*.6);ctx.lineTo(s*.9,s*2.6);
+      ctx.lineTo(s*.2,s*1.1);ctx.lineTo(-s*.6,s*2);ctx.quadraticCurveTo(-s*1.5,0,0,-s*3);ctx.fill();ctx.stroke();
+      ctx.beginPath();ctx.moveTo(-s*1.2,0);ctx.lineTo(s*1.2,0);ctx.lineWidth=.4;ctx.stroke();
+      ctx.beginPath();ctx.moveTo(0,s*1);for(let i=1;i<6;i++)ctx.lineTo(Math.sin(time*.2+c.ph+i)*s*.6,s+i*s*.7);ctx.stroke();break;
+    case 'coco': // cocolitofórido: esfera con placas
+      ctx.beginPath();ctx.arc(0,0,s*1.3,0,7);ctx.fill();
+      for(let i=0;i<7;i++){const an=i/7*Math.PI*2;ctx.beginPath();ctx.ellipse(Math.cos(an)*s*1.2,Math.sin(an)*s*1.2,s*.55,s*.32,an,0,7);ctx.stroke()}break;
+    case 'cadena': // cadena de células (Chaetoceros) con setas
+      for(let i=0;i<n;i++){const x=(i-(n-1)/2)*s*1.9+Math.sin(time*.02+c.ph+i)*s*.15;
+        ctx.beginPath();ctx.rect(x-s*.8,-s*.6,s*1.6,s*1.2);ctx.fill();ctx.stroke();
+        if(s>2.4){ctx.beginPath();ctx.moveTo(x,-s*.6);ctx.lineTo(x+s*1.2,-s*3);ctx.moveTo(x,s*.6);ctx.lineTo(x-s*1.2,s*3);ctx.lineWidth=.3;ctx.stroke()}}break;
+  }
+}
+
+let ptr={x:-999,y:-999,down:false,px:0,py:0};
+function poke(x,y,f=1){pulses.push({x,y,r:0,a:1*f});for(const c of cells){const d=Math.hypot(c.x-x,c.y-y);if(d<120*f)c.glow=Math.max(c.glow,1.2-d/(120*f))}}
+cv.addEventListener('pointerdown',e=>{ptr.down=true;ptr.x=e.clientX;ptr.y=e.clientY;stimulateLife(e.clientX,e.clientY,1.4)});
+addEventListener('pointerup',()=>ptr.down=false);
+cv.addEventListener('pointermove',e=>{ptr.px=ptr.x;ptr.py=ptr.y;ptr.x=e.clientX;ptr.y=e.clientY;
+  const sp=Math.hypot(ptr.x-ptr.px,ptr.y-ptr.py);if(sp>12||ptr.down)stimulateLife(ptr.x,ptr.y,Math.min(1.5,sp/32));if(sp>6||ptr.down)for(const c of cells){const d=Math.hypot(c.x-ptr.x,c.y-ptr.y);if(d<50)c.glow=Math.max(c.glow,(1-d/50)*Math.min(1,sp/25+(ptr.down?.6:0)))}});
+cv.addEventListener('pointerleave',()=>{ptr.x=ptr.y=-999});
+
+$('dens').addEventListener('input',()=>{eco.heritage=Math.min(eco.heritage,capacity()*.22);if(cells.length>capacity())cells.length=capacity()});
+$('vida').addEventListener('input',e=>{const v=+e.target.value;$('vidaV').textContent=v>=121?'∞':v+' s'});
+$('fs').addEventListener('click',()=>{const d=document.documentElement;(document.fullscreenElement?document.exitFullscreen():d.requestFullscreen?.())?.catch?.(()=>{})});
+
+function frame(){
+  growEcosystem(performance.now());
+  time+=reduce?.2:1;
+  const cur=+$('corr').value/100, luz=+$('luz').value/100;
+  const turb=+$('turb').value/100, cont=+$('cont').value/100, vs=vidaSeg(), dt=reduce?.2:1;
+  turbG=turb;
+  // la turbidez vuelve la corriente racheada
+  const gust=1+turb*.8*noise(time*.004,7.3);
+  // agua (con turbidez vira hacia un verde limoso)
+  const bg=ctx.createLinearGradient(0,0,0,H);
+  const tm=turb*.7,r0=8+luz*14,g0=40+luz*50,b0=52+luz*50;
+  bg.addColorStop(0,`rgb(${lerp(r0,38+luz*30,tm)|0},${lerp(g0,50+luz*34,tm)|0},${lerp(b0,34+luz*18,tm)|0})`);bg.addColorStop(.55,'#062029');bg.addColorStop(1,'#020a0e');
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  // haces de luz cenital
+  ctx.globalCompositeOperation='lighter';
+  for(let i=0;i<7;i++){const x=W*(i/6)+Math.sin(time*.003+i*2)*W*.08,w=W*(.04+((i*37)%5)*.012);
+    const g=ctx.createLinearGradient(0,0,0,floorY);g.addColorStop(0,`rgba(140,230,220,${.07*luz*(1+turb*.6)})`);g.addColorStop(Math.max(.25,1-turb*.7),'rgba(140,230,220,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(x-w*.3,0);ctx.lineTo(x+w*.3,0);ctx.lineTo(x+w*2+W*.05,floorY);ctx.lineTo(x-w+W*.05,floorY);ctx.fill()}
+  ctx.globalCompositeOperation='source-over';
+  // fondo
+  ctx.drawImage(sand,0,0,W,H);
+  const blurPx=+$('blur').value/10+turb*1.4;
+  // algas/esponjas en el borde del sedimento
+  for(const w of weeds){let x=w.x,y=sand.top(w.x)+3;ctx.beginPath();ctx.moveTo(x,y);
+    for(let k=1;k<=w.seg;k++){x+=Math.sin(time*.012+w.ph+k*.5)*(1.2+cur*3)*k/w.seg+cur*.6;y-=w.h/w.seg;ctx.lineTo(x,y)}
+    ctx.strokeStyle=w.c<.5?'rgba(80,140,110,.35)':'rgba(150,120,90,.28)';ctx.lineWidth=1.2;ctx.stroke()}
+  // nieve marina
+  for(const s of snow){s.y+=s.v;s.x+=Math.sin(time*.01+s.w)*.15+cur*.4;
+    if(s.y>sand.top((s.x%W+W)%W)){s.y=rnd(-40,0);s.x=rnd(0,W)}if(s.x>W)s.x-=W;if(s.x<0)s.x+=W;
+    ctx.fillStyle=`rgba(200,230,225,${.15+s.r*.12})`;ctx.fillRect(s.x,s.y,s.r,s.r)}
+  // restos de células muertas hundiéndose
+  for(let i=restos.length-1;i>=0;i--){const r=restos[i];r.y+=r.v*dt;r.x+=cur*.4+Math.sin(time*.02+i)*.1;r.a*=.998;
+    if(r.y>sand.top((r.x%W+W)%W)||r.a<.03){restos.splice(i,1);continue}
+    ctx.fillStyle=`hsla(${r.h},40%,70%,${r.a})`;ctx.fillRect(r.x,r.y,r.r,r.r)}
+  // sedimento resuspendido por la turbidez
+  const nl=lodo.length*turb|0;
+  for(let i=0;i<nl;i++){const l=lodo[i];const q=noise(l.x*.006+time*.003,l.y*.006+l.ph);
+    l.x+=cur*.9*gust+Math.cos(q*Math.PI*2)*turb*1.5;l.y+=Math.sin(q*Math.PI*2)*.6*turb+.05;
+    if(l.x>W)l.x-=W;if(l.x<0)l.x+=W;
+    if(l.y>sand.top(l.x)||l.y<0){l.y=sand.top(l.x)-rnd(0,40);l.x=rnd(0,W)}
+    ctx.fillStyle=`rgba(150,140,100,${.06+l.r*.07*turb})`;ctx.fillRect(l.x,l.y,l.r,l.r)}
+  // fitoplancton: ordenado por profundidad
+  for(const c of cells){
+    const n=noise(c.x*.003+time*.0015,c.y*.003);
+    const n2=turb>0?noise(c.x*.012+time*.006,c.y*.012+50):0;
+    c.x+=(cur*1.1*gust+Math.cos(n*Math.PI*2)*(.25+turb*.6)+Math.cos(n2*Math.PI*2)*turb*.9)*(.3+c.z*.9);
+    c.y+=(Math.sin(n*Math.PI*2)*(.22+turb*.5)+Math.sin(n2*Math.PI*2)*turb*.7)*(.3+c.z)+.02;
+    c.rot+=c.vr*(1+turb*2);c.glow*=.965;
+    if(Math.random()<.00015)c.glow=.6; // destello espontáneo
+    if(c.x>W+20)c.x=-20;if(c.x<-20)c.x=W+20;if(c.y<-20)c.y=floorY-10;
+    if(c.y>sand.top((c.x%W+W)%W)-4)c.y-=1.5;
+    // metamorfosis en curso y deriva del tono hacia el de la forma adoptada
+    if(c.m<1)c.m=Math.min(1,c.m+.012*dt);
+    c.hue+=(c.hT-c.hue)*.03;
+    // envejecimiento
+    c.age+=dt;
+    if(vs!==Infinity&&c.age>=c.lf*vs*60){
+      // El relevo no incrementa artificialmente la población.
+      morir(c);
+    }
+  }
+  contagiar(cont);
+  cells.sort((a,b)=>a.z-b.z);
+  // las células se dibujan en una capa aparte y se componen con difuminado
+  lctx.clearRect(0,0,W,H);ctx=lctx;
+  for(const c of cells){const fogA=(.22+c.z*.7)*(1-turb*.55*(1-c.z))*vitalidad(c,vs);if(fogA>.005)drawCell(c,fogA)}
+  ctx=main;
+  if(blurPx>0&&hasFilter){main.filter=`blur(${blurPx}px)`;main.drawImage(layer,0,0,W,H);main.filter='none';
+    main.globalAlpha=.35;main.drawImage(layer,0,0,W,H);main.globalAlpha=1}
+  else if(blurPx>0){sctx.clearRect(0,0,soft.width,soft.height);sctx.drawImage(layer,0,0,soft.width,soft.height);
+    main.globalAlpha=Math.max(.4,1-blurPx/4);main.drawImage(layer,0,0,W,H);
+    main.globalAlpha=Math.min(.8,blurPx/3);main.imageSmoothingQuality='high';main.drawImage(soft,0,0,W,H);main.globalAlpha=1}
+  else main.drawImage(layer,0,0,W,H);
+  // velo de turbidez, más denso hacia el fondo
+  if(turb>0){const f=ctx.createLinearGradient(0,0,0,H);
+    f.addColorStop(0,`rgba(30,45,35,${turb*.25})`);f.addColorStop(1,`rgba(45,50,35,${turb*.55})`);
+    ctx.fillStyle=f;ctx.fillRect(0,0,W,H)}
+  // ondas de perturbación
+  ctx.globalCompositeOperation='lighter';
+  for(let i=pulses.length-1;i>=0;i--){const p=pulses[i];p.r+=3;p.a*=.94;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,7);ctx.strokeStyle=`rgba(127,243,220,${p.a*.35})`;ctx.lineWidth=1;ctx.stroke();
+    if(p.a<.02)pulses.splice(i,1)}
+  ctx.globalCompositeOperation='source-over';
+  // viñeta
+  const v=ctx.createRadialGradient(W/2,H*.45,Math.min(W,H)*.25,W/2,H*.5,Math.max(W,H)*.8);
+  v.addColorStop(0,'rgba(0,0,0,0)');v.addColorStop(1,'rgba(0,4,6,.75)');ctx.fillStyle=v;ctx.fillRect(0,0,W,H);
+  $('prof').textContent='−'+Math.round(212+Math.sin(time*.001)*6+(1-luz)*180)+' m';
+  requestAnimationFrame(frame);
+}
+const root=document.documentElement;
+function toggleCursor(){const on=root.classList.toggle('sincursor');$('cur').textContent=on?'mostrar cursor':'ocultar cursor'}
+function toggleHud(){root.classList.toggle('limpio')}
+$('cur').addEventListener('click',toggleCursor);
+$('hud').addEventListener('click',()=>{toggleHud();if(!root.classList.contains('sincursor'))toggleCursor()});
+addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'&&e.key!=='Escape')return;
+  const k=e.key.toLowerCase();if(k==='c')toggleCursor();else if(k==='h')toggleHud();else if(k==='escape'){root.classList.remove('limpio','sincursor');$('cur').textContent='ocultar cursor'}});
+cv.addEventListener('dblclick',()=>{root.classList.remove('limpio')});
+addEventListener('resize',resize);
+resize();
+// estado inicial con algo de luz ya encendida
+for(let i=0;i<4;i++)poke(rnd(W*.2,W*.8),rnd(H*.2,floorY*.9),.8);
+frame();
+
+// Control gestual recibido de la cámara de la página principal.
+let hzLastHand={x:-999,y:-999,t:0};
+window.addEventListener('message',e=>{
+  if(e.origin!==window.location.origin || !e.data || e.data.type!=='hz-mano-plancton')return;
+  const x=(1-e.data.x)*W, y=e.data.y*H; // coordenadas espejo
+  if(!Number.isFinite(x)||!Number.isFinite(y))return;
+  const moved=Math.hypot(x-hzLastHand.x,y-hzLastHand.y);
+  if(moved>12 || performance.now()-hzLastHand.t>450)stimulateLife(x,y,Math.min(1.6,0.9+moved/180));
+  hzLastHand={x,y,t:performance.now()};
+});
+
+</script>
+
+</body></html>
