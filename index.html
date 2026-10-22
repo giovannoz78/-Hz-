@@ -2308,7 +2308,7 @@
       if(M.cargando) return; M.cargando=true;
       const s=document.createElement('script'); s.src=CDN+'hands.js'; s.crossOrigin='anonymous';
       s.onload=()=>{ try{ const h=new Hands({locateFile:f=>CDN+f});
-        h.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:0.6,minTrackingConfidence:0.5,selfieMode:false});
+        h.setOptions({maxNumHands:1,modelComplexity:1,minDetectionConfidence:0.4,minTrackingConfidence:0.4,selfieMode:false});   // más tolerante: el dorso de la mano y la poca luz también cuentan
         h.onResults(r=>{ const L=(r.multiHandLandmarks&&r.multiHandLandmarks[0])||null, ahora=performance.now();
           if(L&&M.lm&&ahora-M.t<200){ const dt=Math.max(16,ahora-M.t); M.vel=L.map((p,i)=>({x:(p.x-M.lm[i].x)/dt,y:(p.y-M.lm[i].y)/dt})); } else M.vel=null;
           M.lm=L; M.t=ahora; });
@@ -2328,9 +2328,9 @@
   })();
   addEventListener('DOMContentLoaded',()=>{ let v=document.getElementById('hz-version'); if(!v){ v=document.createElement('div'); v.id='hz-version'; }
     v.style.cssText='position:fixed;left:8px;top:8px;z-index:99999;font:500 10px Menlo,monospace;color:#fff;opacity:.6;pointer-events:none';
-    v.textContent='v 22/10 colonia'; document.body.appendChild(v);
+    v.textContent='v 22/10 piel'; document.body.appendChild(v);
     setInterval(()=>{ const M=window.HZMano; const e=M.err?'error':!M.cargando?'espera':!M.h?'cargando':(M.lm&&performance.now()-M.t<400)?'detectada':'buscando';
-      v.textContent='v 22/10 colonia · mano: '+e; },500); });
+      v.textContent='v 22/10 piel · mano: '+e; },500); });
   </script>
   <!-- LA MANO SE VUELVE PAISAJE: cuando el teléfono ve el trigger y la mano, la obra "Fitoplancton abisal" corre tal cual
        (su código, sus colores, sus formas, su agua) y aparece dentro de la silueta de la mano. Entra por las yemas y avanza
@@ -2599,7 +2599,7 @@ return {cv,resize,frame,poke:(x,y,f)=>poke(x,y,f),get W(){return W}};
     const CFG={coloniza:32, suelta:6};
     let col=0, visto=false, Wo=0, Ho=0, D=1, ultT=performance.now(), activo=false;
     const Lp=[]; for(let i=0;i<21;i++) Lp.push({x:0,y:0,vx:0,vy:0});
-    function tam(){ D=Math.min(devicePixelRatio||1,1.5); Wo=innerWidth; Ho=innerHeight; ov.width=Wo*D; ov.height=Ho*D; mk.width=Math.ceil(Wo/3); mk.height=Math.ceil(Ho/3);
+    function tam(){ D=Math.min(devicePixelRatio||1,1.5); Wo=innerWidth; Ho=innerHeight; ov.width=Wo*D; ov.height=Ho*D; mk.width=Math.ceil(Wo/3); mk.height=Math.ceil(Ho/3); m.imageSmoothingEnabled=true;
       o.setTransform(D,0,0,D,0,0); m.setTransform(1/3,0,0,1/3,0,0); }
     function leerMano(){
       const M=window.HZMano; if(!M||!M.lm||!M.src||performance.now()-M.t>400) return false;
@@ -2610,60 +2610,59 @@ return {cv,resize,frame,poke:(x,y,f)=>poke(x,y,f),get W(){return W}};
       if(!visto){ visto=true; }
       return true;
     }
-    // COLONIA: la mano la colonizan células vivas. Unas pocas llegan a las yemas; cada una se divide y su hija ocupa
-    // un lugar vecino si hay espacio; viven y mueren. La población crece sobre la piel como un cultivo y cada célula
-    // abre a su alrededor una ventana a la obra "Fitoplancton abisal": el abismo avanza al ritmo de la vida, no de un reloj.
-    // Espacio de la mano (canónico): palma cx 0..1 / cy 0..1 (muñeca abajo); dedos en cy 1..2; pulgar al costado.
-    const DEDOS=[[1,2,3,4],[5,6,7,8],[9,10,11,12],[13,14,15,16],[17,18,19,20]];
-    const UD=[0.12,0.38,0.62,0.86], AD=0.085;          // centro y medio ancho de cada dedo (índice..meñique) en cx
-    const BIO={division:1.1, paso:0.085, capacidad:6, vida:[25,60], semillas:2};
-    let colonia=[]; const grilla=new Map();
-    const R=Math.random;
-    function enMano(x,y){ if(y>=0&&y<=1&&x>=0&&x<=1) return true;
-      if(y>1&&y<=2.02) for(const u of UD) if(Math.abs(x-u)<=AD) return true;
-      if(x>=-0.3&&x<0&&y>=0.25&&y<=1.85&&Math.abs(x-(-0.12-0.1*(y-0.25)/1.6))<=0.08) return true;   // pulgar
-      return false; }
-    function aPantalla(x,y,pal){
-      if(x<0){ const al=Math.min(1,Math.max(0,(y-0.25)/1.6)), s=al*3, j=Math.min(2,s|0), t=s-j, f=DEDOS[0], A=Lp[f[j]], B=Lp[f[j+1]];
-        const c=-0.12-0.1*al, o=(x-c)/0.08, dx=B.x-A.x, dy=B.y-A.y, l=Math.hypot(dx,dy)||1, r=pal*.12;
-        return [A.x+dx*t-dy/l*o*r, A.y+dy*t+dx/l*o*r]; }
-      if(y>1){ let fi=0,bd=9; UD.forEach((u,k)=>{ const d=Math.abs(x-u); if(d<bd){bd=d;fi=k;} }); const f=DEDOS[fi+1];
-        const s=Math.min(2.999,(y-1)*3), j=s|0, t=s-j, A=Lp[f[j]], B=Lp[f[j+1]], o=(x-UD[fi])/AD, dx=B.x-A.x, dy=B.y-A.y, l=Math.hypot(dx,dy)||1, r=pal*.095*(1-0.1*j);
-        return [A.x+dx*t-dy/l*o*r, A.y+dy*t+dx/l*o*r]; }
-      const a=Lp[1], b=Lp[0], ps=x, bx=a.x+(b.x-a.x)*ps, by=a.y+(b.y-a.y)*ps;
-      const sg=ps<1/3?[5,9,ps*3]:ps<2/3?[9,13,ps*3-1]:[13,17,ps*3-2], P=Lp[sg[0]], Q=Lp[sg[1]], tx=P.x+(Q.x-P.x)*sg[2], ty=P.y+(Q.y-P.y)*sg[2];
-      return [bx+(tx-bx)*y, by+(ty-by)*y]; }
-    const celda=(x,y)=>((x*20+10)|0)+'_'+((y*20+10)|0);
-    function sumar(c,d){ const k=celda(c.x,c.y); grilla.set(k,(grilla.get(k)||0)+d); }
-    function nacer(x,y){ const c={x,y,e:0,edad:0,vida:BIO.vida[0]+R()*(BIO.vida[1]-BIO.vida[0]),r:.75+R()*.5}; colonia.push(c); sumar(c,1); return c; }
-    function sembrar(){ // las primeras células llegan a la punta de cada dedo
-      for(const u of UD) for(let n=0;n<BIO.semillas;n++) nacer(u+(R()-.5)*AD,1.97-R()*.04);
-      for(let n=0;n<BIO.semillas;n++) nacer(-0.22+(R()-.5)*.05,1.8-R()*.05); }
-    function vivir(st,hay){
-      if(hay&&!colonia.length) sembrar();
-      const nuevas=[];
-      for(const c of colonia){ c.edad+=st; c.e=Math.min(1,c.e+st*2.5);
-        if(!hay){ c.muere=c.muere||R()<st*0.9; continue; }       // sin mano, la colonia se apaga
-        if(c.edad>c.vida){ c.muere=true; continue; }
-        if(c.e>=1&&colonia.length<2500&&R()<BIO.division*st){                         // división: la hija busca lugar al lado
-          const an=R()*6.283, x=c.x+Math.cos(an)*BIO.paso, y=c.y+Math.sin(an)*BIO.paso;
-          if(enMano(x,y)&&(grilla.get(celda(x,y))||0)<BIO.capacidad) nuevas.push([x,y]); } }
-      colonia=colonia.filter(c=>{ if(c.muere){ c.e-=st*3; if(c.e<=0){ sumar(c,-1); return false; } } return true; });
-      for(const [x,y] of nuevas) nacer(x,y);
-    }
+    // LA MANO REAL: la silueta sale de la imagen de la cámara (los píxeles de piel alrededor del esqueleto que da MediaPipe),
+    // así los dedos son los tuyos: uñas, nudillos, borde real. Sobre esa silueta avanza la invasión: nace en la punta
+    // de cada dedo y baja hasta la muñeca con un borde irregular, píxel a píxel.
+    const SEG=[];   // [a,b,g en a,g en b,radio relativo]
+    [[1,2,3,4],[5,6,7,8],[9,10,11,12],[13,14,15,16],[17,18,19,20]].forEach((f,fi)=>{ const r=fi===0?.17:.14;
+      SEG.push([f[0],f[1],.40,.27,r],[f[1],f[2],.27,.14,r],[f[2],f[3],.14,0,r*.9]); });
+    [[0,5],[0,9],[0,13],[0,17],[0,1]].forEach(([a,b])=>SEG.push([a,b,1,.40,.36]));
+    const cv2=document.createElement('canvas'), c2=cv2.getContext('2d',{willReadFrequently:true});
+    const hs=(x,y)=>{ const v=Math.sin(x*127.1+y*311.7)*43758.5453; return v-Math.floor(v); };
+    const vn=(x,y)=>{ const ix=Math.floor(x),iy=Math.floor(y),fx=x-ix,fy=y-iy,sx=fx*fx*(3-2*fx),sy=fy*fy*(3-2*fy);
+      const a=hs(ix,iy),b=hs(ix+1,iy),c=hs(ix,iy+1),d=hs(ix+1,iy+1); return a+(b-a)*sx+(c-a)*sy+(a-b-c+d)*sx*sy; };
+    const croma=(r,g,b)=>[0.5*r-0.4187*g-0.0813*b, -0.1687*r-0.3313*g+0.5*b];
     function mascara(){
-      const pal=Math.hypot(Lp[9].x-Lp[0].x,Lp[9].y-Lp[0].y)||100, rr=pal*.055;
-      m.setTransform(1,0,0,1,0,0); m.clearRect(0,0,mk.width,mk.height); m.setTransform(1/3,0,0,1/3,0,0);
-      m.fillStyle='#fff';
-      for(const c of colonia){ if(c.e<=0) continue; const [x,y]=aPantalla(c.x,c.y,pal); m.globalAlpha=Math.min(1,c.e*1.3); m.beginPath(); m.arc(x,y,rr*c.r*(0.3+0.7*c.e),0,7); m.fill(); }
-      m.globalAlpha=1;
+      const M=window.HZMano, src=M&&M.src; if(!src) return;
+      const E=3, w=mk.width, h=mk.height; if(cv2.width!==w||cv2.height!==h){ cv2.width=w; cv2.height=h; }
+      const sr=src.getBoundingClientRect(); c2.clearRect(0,0,w,h);
+      try{ c2.drawImage(src,sr.left/E,sr.top/E,sr.width/E,sr.height/E); }catch(e){ return; }
+      let px; try{ px=c2.getImageData(0,0,w,h); }catch(e){ return; }
+      const d=px.data, pal=Math.hypot(Lp[9].x-Lp[0].x,Lp[9].y-Lp[0].y)||100;
+      // color de la piel: se mide en la palma, entre los nudillos y la muñeca
+      const ref=[0,0]; let nr=0;
+      for(const [a,b] of [[0,9],[0,5],[0,13],[5,9],[9,13],[13,17]]) for(const t of [.35,.55,.75]){
+        const x=((Lp[a].x+(Lp[b].x-Lp[a].x)*t)/E)|0, y=((Lp[a].y+(Lp[b].y-Lp[a].y)*t)/E)|0; if(x<0||y<0||x>=w||y>=h) continue;
+        const k=(y*w+x)*4, c=croma(d[k],d[k+1],d[k+2]); ref[0]+=c[0]; ref[1]+=c[1]; nr++; }
+      if(nr){ ref[0]/=nr; ref[1]/=nr; }
+      // caja de la mano
+      let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; for(const q of Lp){ x0=Math.min(x0,q.x); y0=Math.min(y0,q.y); x1=Math.max(x1,q.x); y1=Math.max(y1,q.y); }
+      const pad=pal*.35; x0=Math.max(0,((x0-pad)/E)|0); y0=Math.max(0,((y0-pad)/E)|0); x1=Math.min(w-1,((x1+pad)/E)|0); y1=Math.min(h-1,((y1+pad)/E)|0);
+      const fr=col*1.12, sg=SEG.map(s=>{ const A=Lp[s[0]],B=Lp[s[1]]; return [A.x/E,A.y/E,(B.x-A.x)/E,(B.y-A.y)/E,s[2],s[3],s[4]*pal/E]; });
+      const out=m.createImageData(w,h), o2=out.data;
+      for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
+        let best=1e9,g=1,lat=0,si=0;
+        for(let n=0;n<sg.length;n++){ const s=sg[n], L2=s[2]*s[2]+s[3]*s[3]||1; let t=((x-s[0])*s[2]+(y-s[1])*s[3])/L2; t=t<0?0:t>1?1:t;
+          const dx=x-s[0]-s[2]*t, dy=y-s[1]-s[3]*t, dd=Math.sqrt(dx*dx+dy*dy)/s[6];
+          if(dd<best){ best=dd; g=s[4]+(s[5]-s[4])*t; lat=dd; si=n+t; } }
+        if(best>1.25) continue;                                   // lejos del esqueleto: no es mano
+        const k=(y*w+x)*4, c=croma(d[k],d[k+1],d[k+2]), dc=Math.hypot(c[0]-ref[0],c[1]-ref[1]);
+        const piel=nr?Math.max(0,Math.min(1,(22-dc)/10)):1;        // parecido al color de la piel medida
+        const cerca=best<0.55?1:Math.max(0,(1.25-best)/0.7);        // el centro del dedo siempre cuenta
+        const en=Math.max(piel*cerca, (si<15&&best<0.45)?1:0);   // en los dedos el centro siempre cuenta; en la palma decide la piel
+        if(en<=0) continue;
+        const ruido=vn(si*2.3,lat*3)*0.10+vn(si*7.1+3,lat*9)*0.04;  // borde del avance irregular
+        const a=Math.max(0,Math.min(1,(fr-g-ruido+0.07)/0.06));
+        o2[k]=o2[k+1]=o2[k+2]=255; o2[k+3]=(255*a*en)|0; }
+      m.setTransform(1,0,0,1,0,0); m.putImageData(out,0,0);
     }
     function cuadro(){
       requestAnimationFrame(cuadro);
       const ahora=performance.now(), st=Math.min(0.05,(ahora-ultT)/1000); ultT=ahora;
       const hay=leerMano();
-      const sv=st*(window.hzSimVel||1); vivir(sv,hay); col=Math.min(1,colonia.length/200);
-      const on=colonia.length>0&&(hay||visto);
+      col=Math.max(0,Math.min(1,col+(hay?st/CFG.coloniza:-st/CFG.suelta)));
+      if(typeof window.hzPlanctonForzar==='number') col=window.hzPlanctonForzar;
+      const on=col>0.01;
       if(on!==activo){ activo=on; document.querySelectorAll('.mindar-ui-scanning').forEach(e=>{ e.style.visibility=on?'hidden':''; });
         if(!on){ o.setTransform(1,0,0,1,0,0); o.clearRect(0,0,ov.width,ov.height); o.setTransform(D,0,0,D,0,0); visto=false; } }
       if(!on){ if(!hay) visto=false; return; }
@@ -2678,7 +2677,7 @@ return {cv,resize,frame,poke:(x,y,f)=>poke(x,y,f),get W(){return W}};
     }
     function iniciar(){ if(iniciar.ok) return; iniciar.ok=true; document.body.appendChild(ov); tam(); ABISMO.resize(); requestAnimationFrame(cuadro); }
     if(document.readyState==='loading') addEventListener('DOMContentLoaded',iniciar); else iniciar();
-    return {CFG,BIO,get col(){return col},get poblacion(){return colonia.length}};
+    return {CFG,get col(){return col}};
   })();
   </script>
   <!-- NUBE: las escenas de [Hz] son nubes de puntos con su propio color (assets/*.bin).
@@ -3024,7 +3023,8 @@ return {cv,resize,frame,poke:(x,y,f)=>poke(x,y,f),get W(){return W}};
         this.morph=Math.min(1,(this.morph||0)+st*(1/d.morphDura+d.morphMov*mov)); }
       this.u.uMorph.value=this.morph||0;
       if(d.genera){ let kc=+window.hzCalor; if(!isFinite(kc)) kc=0.5; if(typeof window.hzForzarGen==='number') kc=window.hzForzarGen;
-        const meta=Math.min(1,Math.max(0,(kc-d.genDesde)/(d.genHasta-d.genDesde)));
+        const manoAhi=window.HZMano&&HZMano.lm&&performance.now()-HZMano.t<400;
+        const meta=manoAhi?0:Math.min(1,Math.max(0,(kc-d.genDesde)/(d.genHasta-d.genDesde)));
         this.u.uGen.value+=(meta-this.u.uGen.value)*Math.min(1,st*(meta>this.u.uGen.value?0.9:0.5)); }
       this.tt=(this.tt||0)+st; this.u.uTermo.value=d.termo*Math.min(1,Math.max(0,(this.tt-d.termoEspera)/d.termoDura));   // tiempo acumulado: no se reinicia al perder la tarjeta   // lentamente, hacia la cámara térmica
       if(this.marcas){ const a=Math.min(1,this.t/1.5)*Math.min(1,Math.max(0,(this.u.uGen.value-0.15)/0.35));   // visibles mientras se ve la tarjeta, a medida que la nube se genera
