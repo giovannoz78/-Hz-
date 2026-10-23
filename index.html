@@ -2344,7 +2344,7 @@
     const layer=document.createElement('canvas'), lctx=layer.getContext('2d');
     const soft=document.createElement('canvas'), sctx=soft.getContext('2d');
     const hasFilter=typeof main.filter==='string';
-    const CFG={congela:14,celulas:220, coloniza:20, suelta:5, contagio:0.25, difuminado:0.9, corriente:0.35};
+    const CFG={congela:14,celulas:220, coloniza:1.2, suelta:0.7, contagio:0.25, difuminado:0.9, corriente:0.35};
     let escala=1,W=0,H=0,DPR=1,time=0,col=0,ultimo=0,activo=false,ultT=performance.now();
     const rnd=(a,b)=>a+Math.random()*(b-a);
     // ruido suave (el mismo del original)
@@ -2458,7 +2458,7 @@
     function frame(){
       requestAnimationFrame(frame);
       const ahora=performance.now(), st=Math.min(0.05,(ahora-ultT)/1000); ultT=ahora;
-      const hay=leerMano(); leerCarta();
+      const hay=leerMano();
       if(hay) ultimo=ahora;
       col=Math.max(0,Math.min(1,col+(hay?st/CFG.coloniza:-st/CFG.suelta)));
       if(typeof window.hzPlanctonForzar==='number') col=window.hzPlanctonForzar;
@@ -2477,13 +2477,8 @@
         if(tramos[c.k].k==='p'){ c.u=Math.min(1,Math.max(0,c.u)); c.v=Math.min(1,Math.max(0,c.v)); }
         else { if(c.u<0||c.u>1) c.u=Math.min(1,Math.max(0,c.u)); c.v=Math.max(-0.9,Math.min(0.9,c.v)); }
         const meta=col*1.1>c.g?1:0;
-        if(meta&&c.via<0){ c.via=0; const an=Math.random()*6.283, rr=Math.sqrt(Math.random())*carta.r;
-          c.ox=(carta.ok?carta.x:W*.5)+Math.cos(an)*rr; c.oy=(carta.ok?carta.y:H*.85)+Math.sin(an)*rr*.7; }
-        if(!sueltas){ pos(c);
-          if(c.via>=0&&c.via<1){ c.via=Math.min(1,c.via+st/(2.2+c.ph%1.6)); const e=c.via*c.via*(3-2*c.via), dx=c.x-c.ox, dy=c.y-c.oy, dl=Math.hypot(dx,dy)||1;
-            const cur2=Math.sin(e*3.1416)*(noise(c.ph,time*.01)*.6+.25)*dl*.35;    // nada en curva, no en línea recta
-            c.x=c.ox+dx*e-dy/dl*cur2; c.y=c.oy+dy*e+dx/dl*cur2; }
-          else if(c.via>=1) c.frio=Math.min(1,c.frio+st/CFG.congela); }      // ya en la piel: de a poco se vuelve hielo
+        if(meta&&c.via<0) c.via=1;
+        if(!sueltas){ pos(c); }
         else { c.y+=.4+c.z*.6; c.x+=Math.sin(time*.02+c.ph)*.3+cur*.4; }
         c.vis+=(meta-c.vis)*.06;
         c.rot+=c.vr*(1-c.frio); c.glow*=.965; if(Math.random()<.00015)c.glow=.6;
@@ -2495,7 +2490,7 @@
       contagiar(CFG.contagio);
       cells.sort((a,b)=>a.z-b.z);
       main.clearRect(0,0,W,H); lctx.clearRect(0,0,W,H); ctx=lctx;
-      for(const c of cells){ const a=(.22+c.z*.7)*c.vis*Math.min(1,col*3); if(a>.005) drawCell(c,a); }
+      for(const c of cells){ const a=hay?(.22+c.z*.7)*c.vis*Math.min(1,col*3):0; if(a>.005) drawCell(c,a); }
       ctx=main;
       const blurPx=CFG.difuminado;
       if(blurPx>0&&hasFilter){main.filter=`blur(${blurPx}px)`;main.drawImage(layer,0,0,W,H);main.filter='none';main.globalAlpha=.35;main.drawImage(layer,0,0,W,H);main.globalAlpha=1}
@@ -2503,6 +2498,7 @@
         main.globalAlpha=Math.max(.4,1-blurPx/4);main.drawImage(layer,0,0,W,H);main.globalAlpha=Math.min(.8,blurPx/3);main.imageSmoothingQuality='high';main.drawImage(soft,0,0,W,H);main.globalAlpha=1}
       else main.drawImage(layer,0,0,W,H);
       main.globalCompositeOperation='lighter';
+      if(!hay) pulses.length=0;
       for(let i=pulses.length-1;i>=0;i--){const p=pulses[i];p.r+=3;p.a*=.94;
         main.beginPath();main.arc(p.x,p.y,p.r,0,7);main.strokeStyle=`rgba(30,215,200,${p.a*.4})`;main.lineWidth=.8;main.stroke();
         if(p.a<.02)pulses.splice(i,1)}
@@ -4303,72 +4299,23 @@
   </script>
 
 
-<!-- ESCENA ABISAL: se muestra solamente cuando MediaPipe reconoce una mano.
-     El detector y la cámara permanecen activos en la página principal. -->
-<style>
-  #hz-abisal-escena {position:fixed;inset:0;z-index:100300;display:none;background:#02080d;overflow:hidden}
-  #hz-abisal-escena.hz-visible {display:block}
-  #hz-abisal-mar {position:absolute;inset:0;border:0;width:100%;height:100%;pointer-events:none}
-  #hz-abisal-cerrar {position:absolute;top:max(14px, env(safe-area-inset-top));right:max(14px, env(safe-area-inset-right));z-index:2;background:rgba(2,8,13,.8);border:1px solid rgba(127,243,220,.55);border-radius:5px;color:#cfe6e4;padding:10px 13px;font:12px monospace;cursor:pointer}
-  #hz-abisal-etiqueta {position:absolute;left:20px;top:max(18px, env(safe-area-inset-top));z-index:2;color:#7ff3dc;font:11px monospace;letter-spacing:.12em;pointer-events:none}
-</style>
-<div id="hz-abisal-escena" aria-hidden="true">
-  <iframe id="hz-abisal-mar" title="Fitoplancton abisal" loading="lazy" data-src="fitoplancton-abisal.html"></iframe>
-  <span id="hz-abisal-etiqueta">MANO DETECTADA · FITOPLANCTON ABISAL</span>
-  <button id="hz-abisal-cerrar" type="button" aria-label="Volver a la cámara">VOLVER A CÁMARA ×</button>
-</div>
+<!-- La cámara y MindAR permanecen en esta página. El plancton se dibuja
+sobre la mano en el canvas transparente hz-plancton, sin iframe ni navegación. -->
 <script>
 (function(){
-  const scene=document.getElementById('hz-abisal-escena');
-  const iframe=document.getElementById('hz-abisal-mar');
-  const close=document.getElementById('hz-abisal-cerrar');
-  let presentSince=0, absentSince=0, dismissedUntilGone=false;
-  const SHOW_MS=450, HIDE_MS=2200;
-  function show(){
-    if(!iframe.src) iframe.src=iframe.dataset.src;
-    scene.classList.add('hz-visible');
-    scene.setAttribute('aria-hidden','false');
-    // Evita dos sistemas de plancton superpuestos.
-    const old=document.getElementById('hz-plancton');
-    if(old)old.style.visibility='hidden';
-  }
-  function hide(){
-    scene.classList.remove('hz-visible');
-    scene.setAttribute('aria-hidden','true');
-    const old=document.getElementById('hz-plancton');
-    if(old)old.style.visibility='';
-  }
-  close.addEventListener('click',()=>{dismissedUntilGone=true;hide()});
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&scene.classList.contains('hz-visible')){dismissedUntilGone=true;hide()}});
-  // Reutiliza la detección existente en vez de abrir otra cámara.
-  function tick(){
-    const now=performance.now();
-    const m=window.HZMano;
-    const live=!!(m&&m.lm&&now-m.t<450);
-    if(live){
-      absentSince=0;
-      if(!presentSince)presentSince=now;
-      if(!dismissedUntilGone&&now-presentSince>SHOW_MS&&!scene.classList.contains('hz-visible'))show();
-      if(scene.classList.contains('hz-visible')&&iframe.contentWindow&&m.lm[8]){
-        iframe.contentWindow.postMessage({type:'hz-mano-plancton',x:m.lm[8].x,y:m.lm[8].y},location.origin);
-      }
-    }else{
-      presentSince=0;
-      if(!absentSince)absentSince=now;
-      if(now-absentSince>HIDE_MS){
-        dismissedUntilGone=false;
-        if(scene.classList.contains('hz-visible'))hide();
-      }
-    }
-  }
-  setInterval(tick,100);
-  // Iniciar el reconocedor cuando la cámara de MindAR esté lista.
+  function iniciar(){ window.HZMano?.iniciar(); }
   document.addEventListener('DOMContentLoaded',()=>{
-    const ar=document.querySelector('a-scene');
-    if(ar)ar.addEventListener('arReady',()=>window.HZMano?.iniciar(),{once:true});
-  });
+    const scene=document.querySelector('a-scene');
+    if(scene) scene.addEventListener('arReady',iniciar,{once:true});
+    // También cubre la cámara lista antes de registrar arReady.
+    const timer=setInterval(()=>{
+      const v=window.hzManoFuente||document.querySelector('video');
+      if(v&&(v.tagName!=='VIDEO'||(v.readyState>=2&&v.videoWidth))){
+        clearInterval(timer);iniciar();
+      }
+    },500);
+  },{once:true});
 })();
 </script>
-
 </body>
 </html>
