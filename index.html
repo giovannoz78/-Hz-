@@ -2308,7 +2308,7 @@
       if(M.cargando) return; M.cargando=true;
       const s=document.createElement('script'); s.src=CDN+'hands.js'; s.crossOrigin='anonymous';
       s.onload=()=>{ try{ const h=new Hands({locateFile:f=>CDN+f});
-        h.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:0.4,minTrackingConfidence:0.4,selfieMode:false});   // más tolerante: el dorso de la mano y la poca luz también cuentan
+        h.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:0.6,minTrackingConfidence:0.5,selfieMode:false});
         h.onResults(r=>{ const L=(r.multiHandLandmarks&&r.multiHandLandmarks[0])||null, ahora=performance.now();
           if(L&&M.lm&&ahora-M.t<200){ const dt=Math.max(16,ahora-M.t); M.vel=L.map((p,i)=>({x:(p.x-M.lm[i].x)/dt,y:(p.y-M.lm[i].y)/dt})); } else M.vel=null;
           M.lm=L; M.t=ahora; });
@@ -2328,355 +2328,188 @@
   })();
   addEventListener('DOMContentLoaded',()=>{ let v=document.getElementById('hz-version'); if(!v){ v=document.createElement('div'); v.id='hz-version'; }
     v.style.cssText='position:fixed;left:8px;top:8px;z-index:99999;font:500 10px Menlo,monospace;color:#fff;opacity:.6;pointer-events:none';
-    v.textContent='v 22/10 20:00'; document.body.appendChild(v);
+    v.textContent='v 22/10 glaciar'; document.body.appendChild(v);
     setInterval(()=>{ const M=window.HZMano; const e=M.err?'error':!M.cargando?'espera':!M.h?'cargando':(M.lm&&performance.now()-M.t<400)?'detectada':'buscando';
-      v.textContent='v 22/10 20:00 · mano: '+e; },500); });
+      v.textContent='v 22/10 glaciar · mano: '+e; },500); });
   </script>
-  <!-- LA MANO SE VUELVE PAISAJE: cuando el teléfono ve el trigger y la mano, la obra "Fitoplancton abisal" corre tal cual
-       (su código, sus colores, sus formas, su agua) y aparece dentro de la silueta de la mano. Entra por las yemas y avanza
-       hacia la muñeca: el abismo nos contamina y pasamos a ser paisaje. -->
+  <!-- FITOPLANCTON SOBRE LA MANO: cuando MediaPipe ve la mano, el fitoplancton abisal la coloniza.
+       Las células (diatomeas, dinoflagelados, cocolitofóridos, cadenas) nacen en las yemas y avanzan hacia la muñeca,
+       derivan sobre la piel siguiendo la mano, se contagian la forma entre vecinas y se encienden cuando los dedos se mueven.
+       El dibujo de cada célula es el de "Fitoplancton abisal" (sin el fondo marino: el fondo es la cámara). -->
   <script>
   window.HZPlancton=window.HZPlancton||(function(){
-    const ABISMO=(function(){
-
-const cv=document.createElement('canvas');let ctx=cv.getContext('2d');const main=ctx;
-const layer=document.createElement('canvas');const lctx=layer.getContext('2d');
-const soft=document.createElement('canvas');const sctx=soft.getContext('2d');
-const hasFilter=typeof main.filter==='string';
-let W,H,DPR,floorY,sand,time=0;
-const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
-const VAL={dens:480,corr:35,turb:20,luz:55,blur:9,cont:25,vida:45};
-const $=id=>(id in VAL)?{value:VAL[id],addEventListener(){}}:{textContent:'',addEventListener(){},set textContent(v){}};
-const rnd=(a,b)=>a+Math.random()*(b-a);
-
-// ruido suave 1D/2D barato
-const P=new Uint8Array(512);for(let i=0;i<256;i++)P[i]=i;for(let i=255;i>0;i--){const j=Math.random()*(i+1)|0;[P[i],P[j]]=[P[j],P[i]]}for(let i=0;i<256;i++)P[i+256]=P[i];
-const fade=t=>t*t*t*(t*(t*6-15)+10),lerp=(a,b,t)=>a+(b-a)*t;
-function grad(h,x,y){const g=h&3;return((g&1)?-x:x)+((g&2)?-y:y)}
-function noise(x,y){const X=Math.floor(x)&255,Y=Math.floor(y)&255;x-=Math.floor(x);y-=Math.floor(y);const u=fade(x),v=fade(y);
-  const a=P[X]+Y,b=P[X+1]+Y;return lerp(lerp(grad(P[a],x,y),grad(P[b],x-1,y),u),lerp(grad(P[a+1],x,y-1),grad(P[b+1],x-1,y-1),u),v)}
-
-// tipos de fitoplancton
-const TIPOS=['diatomea_c','diatomea_p','dino','coco','cadena'];
-let cells=[],snow=[],pulses=[],weeds=[],restos=[],lodo=[];
-let turbG=0;
-// vida en segundos; el tope del slider equivale a inmortal
-const vidaSeg=()=>{const v=+$('vida').value;return v>=121?Infinity:v};
-
-function mkCell(){
-  const t=TIPOS[Math.random()*TIPOS.length|0];
-  const depth=Math.random();
-  const c={t,x:rnd(0,W),y:rnd(0,floorY),z:depth,// z: 0 lejos, 1 cerca
-    s:(t==='cadena'?rnd(2.5,4):rnd(1.6,4.2))*(0.45+depth*0.9),
-    rot:rnd(0,Math.PI*2),vr:rnd(-.01,.01),ph:rnd(0,1e3),glow:0,
-    hue:t==='dino'?rnd(160,185):t==='coco'?rnd(55,90):rnd(70,120),
-    n:t==='cadena'?(rnd(3,7)|0):t==='diatomea_c'?(rnd(8,14)|0):0};
-  // forma previa (para la metamorfosis), tono objetivo, longevidad individual y edad inicial escalonada
-  c.t0=c.t;c.n0=c.n;c.m=1;c.hT=c.hue;c.lf=rnd(.6,1.4);
-  c.age=rnd(0,.9)*c.lf*Math.min(vidaSeg(),60)*60;
-  return c;
-}
-function mkLodo(){return{x:rnd(0,W),y:rnd(floorY*.25,floorY+10),r:rnd(.5,2.4),ph:rnd(0,9)}}
-
-// muerte: el cuerpo cae como resto orgánico y el lugar lo ocupa una célula nueva,
-// muchas veces hija por división de otra (hereda su forma)
-function morir(c){
-  if(restos.length<700)restos.push({x:c.x,y:c.y,r:Math.max(.6,c.s*.35),v:rnd(.25,.6),a:.5,h:c.hue});
-  const nc=mkCell();
-  if(Math.random()<.6&&cells.length>1){const p=cells[Math.random()*cells.length|0];
-    nc.t=nc.t0=p.t;nc.n=nc.n0=p.n;nc.hue=nc.hT=p.hT;
-    nc.x=p.x+rnd(-14,14);nc.y=p.y+rnd(-14,14);nc.z=Math.min(1,Math.max(0,p.z+rnd(-.05,.05)));nc.s=p.s*rnd(.85,1.1)}
-  nc.age=0;Object.assign(c,nc);
-}
-function vitalidad(c,vs){
-  const fin=Math.min(1,c.age/90);if(vs===Infinity)return fin;
-  const life=c.lf*vs*60;return fin*Math.max(0,Math.min(1,(life-c.age)/Math.min(120,life*.25)));
-}
-
-// contagio: una célula cercana (a profundidad parecida) puede adoptar la forma de su vecina
-function infectar(c,o){c.t0=c.t;c.n0=c.n;c.t=o.t;c.n=o.n;c.hT=o.hT;c.m=0;c.glow=Math.max(c.glow,.35)}
-function contagiar(k){
-  if(k<=0||cells.length<2)return;
-  const G=36,cols=Math.ceil(W/G)+3,grid=new Map();
-  for(const c of cells){const key=((c.x/G|0)+1)+((c.y/G|0)+1)*cols;let b=grid.get(key);if(!b)grid.set(key,b=[]);b.push(c)}
-  const intentos=Math.min(cells.length,60+k*400|0);
-  for(let i=0;i<intentos;i++){const c=cells[Math.random()*cells.length|0];if(c.m<1)continue;
-    const gx=(c.x/G|0)+1,gy=(c.y/G|0)+1;
-    busca:for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){const b=grid.get(gx+dx+(gy+dy)*cols);if(!b)continue;
-      for(const o of b){if(o===c||o.t===c.t||Math.abs(o.z-c.z)>.25)continue;
-        if(Math.hypot(o.x-c.x,o.y-c.y)<G&&Math.random()<k*k*.5){infectar(c,o);break busca}}}}
-}
-function mkSnow(){return{x:rnd(0,W),y:rnd(-H,floorY),r:rnd(.4,1.8),v:rnd(.08,.35),w:rnd(0,6)}}
-
-function resize(){
-  DPR=0.75;W=innerWidth;H=innerHeight;
-  cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
-  layer.width=W*DPR;layer.height=H*DPR;lctx.setTransform(DPR,0,0,DPR,0,0);
-  soft.width=Math.ceil(W/4);soft.height=Math.ceil(H/4);
-  floorY=H*0.78;
-  buildFloor();
-  const n=+$('dens').value;cells=Array.from({length:n},mkCell);
-  snow=Array.from({length:Math.round(W*H/2600)},mkSnow);
-  lodo=Array.from({length:Math.round(W*H/900)},mkLodo);restos=[];
-  weeds=Array.from({length:Math.round(W/38)},()=>({x:rnd(0,W),h:rnd(18,70),seg:(rnd(5,10)|0),ph:rnd(0,9),c:rnd(0,1)}));
-}
-
-// fondo marino pre-renderizado: sedimento, ripples, piedras, diatomeas muertas
-function buildFloor(){
-  sand=document.createElement('canvas');sand.width=W*DPR;sand.height=H*DPR;
-  const g=sand.getContext('2d');g.setTransform(DPR,0,0,DPR,0,0);
-  const top=x=>floorY+noise(x*.004,1.3)*26+noise(x*.02,4)*5;
-  g.beginPath();g.moveTo(0,H);for(let x=0;x<=W;x+=4)g.lineTo(x,top(x));g.lineTo(W,H);g.closePath();
-  const gr=g.createLinearGradient(0,floorY-30,0,H);gr.addColorStop(0,'#123139');gr.addColorStop(.35,'#0a1f25');gr.addColorStop(1,'#040d10');
-  g.fillStyle=gr;g.fill();g.save();g.clip();
-  // ondulitas de arena
-  for(let i=0;i<70;i++){const y0=rnd(floorY,H);g.beginPath();
-    for(let x=0;x<=W;x+=6){const y=y0+Math.sin(x*.035+i)*2+noise(x*.01,i)*6;x?g.lineTo(x,y):g.moveTo(x,y)}
-    g.strokeStyle=`rgba(120,170,170,${rnd(.02,.06)})`;g.lineWidth=rnd(.5,1.4);g.stroke()}
-  // grano
-  for(let i=0;i<W*H*.012;i++){const x=rnd(0,W),y=rnd(floorY-20,H);if(y<top(x))continue;
-    g.fillStyle=`rgba(${rnd(120,200)|0},${rnd(170,210)|0},${rnd(170,200)|0},${rnd(.03,.12)})`;g.fillRect(x,y,1,1)}
-  // piedras y valvas
-  for(let i=0;i<W/28;i++){const x=rnd(0,W),y=top(x)+rnd(4,(H-floorY)*.8),r=rnd(3,16)*(0.5+(y-floorY)/(H-floorY));
-    g.beginPath();g.ellipse(x,y,r,r*rnd(.4,.6),rnd(-.3,.3),0,7);g.fillStyle=`rgba(20,45,50,${rnd(.6,.9)})`;g.fill();
-    g.beginPath();g.ellipse(x-r*.2,y-r*.18,r*.6,r*.18,0,0,7);g.fillStyle='rgba(140,200,200,.05)';g.fill()}
-  for(let i=0;i<W/14;i++){const x=rnd(0,W),y=top(x)+rnd(2,(H-floorY)*.9),r=rnd(1.2,3.5);
-    g.beginPath();g.arc(x,y,r,0,7);g.strokeStyle='rgba(180,220,200,.12)';g.lineWidth=.6;g.stroke();
-    for(let k=0;k<6;k++){const a=k/6*Math.PI*2;g.beginPath();g.moveTo(x,y);g.lineTo(x+Math.cos(a)*r,y+Math.sin(a)*r);g.stroke()}}
-  g.restore();
-  sand.top=top;
-}
-
-function drawCell(c,a){
-  const L=Math.min(1,c.glow);
-  const lum=55+c.z*14;
-  const edge=`hsla(${c.hue},70%,82%,${a*.6})`;
-  ctx.save();ctx.translate(c.x,c.y);ctx.rotate(c.rot);
-  // relleno translúcido tipo vidrio: centro casi transparente, borde más denso
-  const R=c.s*(c.t==='diatomea_p'?2.9:c.t==='dino'?3:c.t==='cadena'?1.4:1.8);
-  const base=ctx.createRadialGradient(-c.s*.3,-c.s*.3,0,0,0,R);
-  base.addColorStop(0,`hsla(${c.hue},60%,${lum+20}%,${a*.07})`);
-  base.addColorStop(.65,`hsla(${c.hue},55%,${lum}%,${a*.18})`);
-  base.addColorStop(1,`hsla(${c.hue},55%,${lum}%,${a*.38})`);
-  if(L>.02){ctx.globalCompositeOperation='lighter';
-    const r=c.s*(6+L*10)*(1+turbG*.6);const gg=ctx.createRadialGradient(0,0,0,0,0,r);
-    gg.addColorStop(0,`rgba(127,243,220,${.55*L})`);gg.addColorStop(1,'rgba(127,243,220,0)');
-    ctx.fillStyle=gg;ctx.beginPath();ctx.arc(0,0,r,0,7);ctx.fill();ctx.globalCompositeOperation='source-over'}
-  ctx.lineWidth=Math.max(.4,c.s*.18);ctx.strokeStyle=edge;ctx.fillStyle=base;const s=c.s;
-  if(c.m>=1)forma(c.t,s,c.n,c);
-  else{// metamorfosis: la forma vieja se contrae y se apaga mientras la nueva crece
-    const m=fade(c.m);
-    ctx.save();ctx.globalAlpha=1-m;ctx.scale(1-m*.35,1-m*.35);forma(c.t0,s,c.n0,c);ctx.restore();
-    ctx.save();ctx.globalAlpha=m;const k=.65+m*.35;ctx.scale(k,k);forma(c.t,s,c.n,c);ctx.restore()}
-  ctx.restore();
-}
-
-function forma(t,s,n,c){
-  switch(t){
-    case 'diatomea_c': // céntrica: disco con estrías radiales
-      ctx.beginPath();ctx.arc(0,0,s*1.6,0,7);ctx.fill();ctx.stroke();
-      if(s>2){ctx.beginPath();for(let i=0;i<n;i++){const an=i/n*Math.PI*2;ctx.moveTo(Math.cos(an)*s*.5,Math.sin(an)*s*.5);ctx.lineTo(Math.cos(an)*s*1.5,Math.sin(an)*s*1.5)}ctx.lineWidth=.35;ctx.stroke()}break;
-    case 'diatomea_p': // pennada: navícula
-      ctx.beginPath();ctx.ellipse(0,0,s*2.8,s*.7,0,0,7);ctx.fill();ctx.stroke();
-      if(s>2){ctx.beginPath();ctx.moveTo(-s*2.4,0);ctx.lineTo(s*2.4,0);ctx.lineWidth=.35;ctx.stroke()}break;
-    case 'dino': // dinoflagelado con cuernos y flagelo
-      ctx.beginPath();ctx.moveTo(0,-s*3);ctx.quadraticCurveTo(s*1.4,-s*.6,s*1.2,s*.6);ctx.lineTo(s*.9,s*2.6);
-      ctx.lineTo(s*.2,s*1.1);ctx.lineTo(-s*.6,s*2);ctx.quadraticCurveTo(-s*1.5,0,0,-s*3);ctx.fill();ctx.stroke();
-      ctx.beginPath();ctx.moveTo(-s*1.2,0);ctx.lineTo(s*1.2,0);ctx.lineWidth=.4;ctx.stroke();
-      ctx.beginPath();ctx.moveTo(0,s*1);for(let i=1;i<6;i++)ctx.lineTo(Math.sin(time*.2+c.ph+i)*s*.6,s+i*s*.7);ctx.stroke();break;
-    case 'coco': // cocolitofórido: esfera con placas
-      ctx.beginPath();ctx.arc(0,0,s*1.3,0,7);ctx.fill();
-      for(let i=0;i<7;i++){const an=i/7*Math.PI*2;ctx.beginPath();ctx.ellipse(Math.cos(an)*s*1.2,Math.sin(an)*s*1.2,s*.55,s*.32,an,0,7);ctx.stroke()}break;
-    case 'cadena': // cadena de células (Chaetoceros) con setas
-      for(let i=0;i<n;i++){const x=(i-(n-1)/2)*s*1.9+Math.sin(time*.02+c.ph+i)*s*.15;
-        ctx.beginPath();ctx.rect(x-s*.8,-s*.6,s*1.6,s*1.2);ctx.fill();ctx.stroke();
-        if(s>2.4){ctx.beginPath();ctx.moveTo(x,-s*.6);ctx.lineTo(x+s*1.2,-s*3);ctx.moveTo(x,s*.6);ctx.lineTo(x-s*1.2,s*3);ctx.lineWidth=.3;ctx.stroke()}}break;
-  }
-}
-
-let ptr={x:-999,y:-999,down:false,px:0,py:0};
-function poke(x,y,f=1){pulses.push({x,y,r:0,a:1*f});for(const c of cells){const d=Math.hypot(c.x-x,c.y-y);if(d<120*f)c.glow=Math.max(c.glow,1.2-d/(120*f))}}
-cv.addEventListener('pointerdown',e=>{ptr.down=true;ptr.x=e.clientX;ptr.y=e.clientY;poke(e.clientX,e.clientY,1.4)});
-addEventListener('pointerup',()=>ptr.down=false);
-cv.addEventListener('pointermove',e=>{ptr.px=ptr.x;ptr.py=ptr.y;ptr.x=e.clientX;ptr.y=e.clientY;
-  const sp=Math.hypot(ptr.x-ptr.px,ptr.y-ptr.py);if(sp>6||ptr.down)for(const c of cells){const d=Math.hypot(c.x-ptr.x,c.y-ptr.y);if(d<50)c.glow=Math.max(c.glow,(1-d/50)*Math.min(1,sp/25+(ptr.down?.6:0)))}});
-cv.addEventListener('pointerleave',()=>{ptr.x=ptr.y=-999});
-
-$('dens').addEventListener('input',e=>{const n=+e.target.value;while(cells.length<n)cells.push(mkCell());cells.length=n});
-$('vida').addEventListener('input',e=>{const v=+e.target.value;$('vidaV').textContent=v>=121?'∞':v+' s'});
-$('fs').addEventListener('click',()=>{const d=document.documentElement;(document.fullscreenElement?document.exitFullscreen():d.requestFullscreen?.())?.catch?.(()=>{})});
-
-function frame(){
-  time+=reduce?.2:1;
-  const cur=+$('corr').value/100, luz=+$('luz').value/100;
-  const turb=+$('turb').value/100, cont=+$('cont').value/100, vs=vidaSeg(), dt=reduce?.2:1;
-  turbG=turb;
-  // la turbidez vuelve la corriente racheada
-  const gust=1+turb*.8*noise(time*.004,7.3);
-  // agua (con turbidez vira hacia un verde limoso)
-  const bg=ctx.createLinearGradient(0,0,0,H);
-  const tm=turb*.7,r0=8+luz*14,g0=40+luz*50,b0=52+luz*50;
-  bg.addColorStop(0,`rgb(${lerp(r0,38+luz*30,tm)|0},${lerp(g0,50+luz*34,tm)|0},${lerp(b0,34+luz*18,tm)|0})`);bg.addColorStop(.55,'#062029');bg.addColorStop(1,'#020a0e');
-  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
-  // haces de luz cenital
-  ctx.globalCompositeOperation='lighter';
-  for(let i=0;i<7;i++){const x=W*(i/6)+Math.sin(time*.003+i*2)*W*.08,w=W*(.04+((i*37)%5)*.012);
-    const g=ctx.createLinearGradient(0,0,0,floorY);g.addColorStop(0,`rgba(140,230,220,${.07*luz*(1+turb*.6)})`);g.addColorStop(Math.max(.25,1-turb*.7),'rgba(140,230,220,0)');
-    ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(x-w*.3,0);ctx.lineTo(x+w*.3,0);ctx.lineTo(x+w*2+W*.05,floorY);ctx.lineTo(x-w+W*.05,floorY);ctx.fill()}
-  ctx.globalCompositeOperation='source-over';
-  // fondo
-  ctx.drawImage(sand,0,0,W,H);
-  const blurPx=+$('blur').value/10+turb*1.4;
-  // algas/esponjas en el borde del sedimento
-  for(const w of weeds){let x=w.x,y=sand.top(w.x)+3;ctx.beginPath();ctx.moveTo(x,y);
-    for(let k=1;k<=w.seg;k++){x+=Math.sin(time*.012+w.ph+k*.5)*(1.2+cur*3)*k/w.seg+cur*.6;y-=w.h/w.seg;ctx.lineTo(x,y)}
-    ctx.strokeStyle=w.c<.5?'rgba(80,140,110,.35)':'rgba(150,120,90,.28)';ctx.lineWidth=1.2;ctx.stroke()}
-  // nieve marina
-  for(const s of snow){s.y+=s.v;s.x+=Math.sin(time*.01+s.w)*.15+cur*.4;
-    if(s.y>sand.top((s.x%W+W)%W)){s.y=rnd(-40,0);s.x=rnd(0,W)}if(s.x>W)s.x-=W;if(s.x<0)s.x+=W;
-    ctx.fillStyle=`rgba(200,230,225,${.15+s.r*.12})`;ctx.fillRect(s.x,s.y,s.r,s.r)}
-  // restos de células muertas hundiéndose
-  for(let i=restos.length-1;i>=0;i--){const r=restos[i];r.y+=r.v*dt;r.x+=cur*.4+Math.sin(time*.02+i)*.1;r.a*=.998;
-    if(r.y>sand.top((r.x%W+W)%W)||r.a<.03){restos.splice(i,1);continue}
-    ctx.fillStyle=`hsla(${r.h},40%,70%,${r.a})`;ctx.fillRect(r.x,r.y,r.r,r.r)}
-  // sedimento resuspendido por la turbidez
-  const nl=lodo.length*turb|0;
-  for(let i=0;i<nl;i++){const l=lodo[i];const q=noise(l.x*.006+time*.003,l.y*.006+l.ph);
-    l.x+=cur*.9*gust+Math.cos(q*Math.PI*2)*turb*1.5;l.y+=Math.sin(q*Math.PI*2)*.6*turb+.05;
-    if(l.x>W)l.x-=W;if(l.x<0)l.x+=W;
-    if(l.y>sand.top(l.x)||l.y<0){l.y=sand.top(l.x)-rnd(0,40);l.x=rnd(0,W)}
-    ctx.fillStyle=`rgba(150,140,100,${.06+l.r*.07*turb})`;ctx.fillRect(l.x,l.y,l.r,l.r)}
-  // fitoplancton: ordenado por profundidad
-  for(const c of cells){
-    const n=noise(c.x*.003+time*.0015,c.y*.003);
-    const n2=turb>0?noise(c.x*.012+time*.006,c.y*.012+50):0;
-    c.x+=(cur*1.1*gust+Math.cos(n*Math.PI*2)*(.25+turb*.6)+Math.cos(n2*Math.PI*2)*turb*.9)*(.3+c.z*.9);
-    c.y+=(Math.sin(n*Math.PI*2)*(.22+turb*.5)+Math.sin(n2*Math.PI*2)*turb*.7)*(.3+c.z)+.02;
-    c.rot+=c.vr*(1+turb*2);c.glow*=.965;
-    if(Math.random()<.00015)c.glow=.6; // destello espontáneo
-    if(c.x>W+20)c.x=-20;if(c.x<-20)c.x=W+20;if(c.y<-20)c.y=floorY-10;
-    if(c.y>sand.top((c.x%W+W)%W)-4)c.y-=1.5;
-    // metamorfosis en curso y deriva del tono hacia el de la forma adoptada
-    if(c.m<1)c.m=Math.min(1,c.m+.012*dt);
-    c.hue+=(c.hT-c.hue)*.03;
-    // envejecimiento
-    c.age+=dt;
-    if(vs!==Infinity&&c.age>=c.lf*vs*60)morir(c);
-  }
-  contagiar(cont);
-  cells.sort((a,b)=>a.z-b.z);
-  // las células se dibujan en una capa aparte y se componen con difuminado
-  lctx.clearRect(0,0,W,H);ctx=lctx;
-  for(const c of cells){const fogA=(.22+c.z*.7)*(1-turb*.55*(1-c.z))*vitalidad(c,vs);if(fogA>.005)drawCell(c,fogA)}
-  ctx=main;
-  if(blurPx>0&&hasFilter){main.filter=`blur(${blurPx}px)`;main.drawImage(layer,0,0,W,H);main.filter='none';
-    main.globalAlpha=.35;main.drawImage(layer,0,0,W,H);main.globalAlpha=1}
-  else if(blurPx>0){sctx.clearRect(0,0,soft.width,soft.height);sctx.drawImage(layer,0,0,soft.width,soft.height);
-    main.globalAlpha=Math.max(.4,1-blurPx/4);main.drawImage(layer,0,0,W,H);
-    main.globalAlpha=Math.min(.8,blurPx/3);main.imageSmoothingQuality='high';main.drawImage(soft,0,0,W,H);main.globalAlpha=1}
-  else main.drawImage(layer,0,0,W,H);
-  // velo de turbidez, más denso hacia el fondo
-  if(turb>0){const f=ctx.createLinearGradient(0,0,0,H);
-    f.addColorStop(0,`rgba(30,45,35,${turb*.25})`);f.addColorStop(1,`rgba(45,50,35,${turb*.55})`);
-    ctx.fillStyle=f;ctx.fillRect(0,0,W,H)}
-  // ondas de perturbación
-  ctx.globalCompositeOperation='lighter';
-  for(let i=pulses.length-1;i>=0;i--){const p=pulses[i];p.r+=3;p.a*=.94;
-    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,7);ctx.strokeStyle=`rgba(127,243,220,${p.a*.35})`;ctx.lineWidth=1;ctx.stroke();
-    if(p.a<.02)pulses.splice(i,1)}
-  ctx.globalCompositeOperation='source-over';
-  // viñeta
-  const v=ctx.createRadialGradient(W/2,H*.45,Math.min(W,H)*.25,W/2,H*.5,Math.max(W,H)*.8);
-  v.addColorStop(0,'rgba(0,0,0,0)');v.addColorStop(1,'rgba(0,4,6,.75)');ctx.fillStyle=v;ctx.fillRect(0,0,W,H);
-  $('prof').textContent='−'+Math.round(212+Math.sin(time*.001)*6+(1-luz)*180)+' m';
-}
-addEventListener('resize',resize);
-return {cv,resize,frame,poke:(x,y,f)=>poke(x,y,f),get W(){return W}};
-    })();
-    const ov=document.createElement('canvas'); ov.id='hz-plancton';
-    ov.style.cssText='position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:99990';
-    const o=ov.getContext('2d'), mk=document.createElement('canvas'), m=mk.getContext('2d'), hasF=typeof o.filter==='string';
-    const CFG={coloniza:22, suelta:6};
-    let col=0, visto=false, Wo=0, Ho=0, D=1, ultT=performance.now(), activo=false;
-    const Lp=[]; for(let i=0;i<21;i++) Lp.push({x:0,y:0,vx:0,vy:0});
-    function tam(){ D=Math.min(devicePixelRatio||1,1.5); Wo=innerWidth; Ho=innerHeight; ov.width=Wo*D; ov.height=Ho*D; mk.width=Math.ceil(Wo/4); mk.height=Math.ceil(Ho/4); m.imageSmoothingEnabled=true;
-      o.setTransform(D,0,0,D,0,0); m.setTransform(1/3,0,0,1/3,0,0); }
+    const cv=document.createElement('canvas'); cv.id='hz-plancton';
+    cv.style.cssText='position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:99990;mix-blend-mode:screen';   // el plancton suma luz a la imagen de la cámara: no la tiñe como una mancha
+    const main=cv.getContext('2d'); let ctx=main;
+    const layer=document.createElement('canvas'), lctx=layer.getContext('2d');
+    const soft=document.createElement('canvas'), sctx=soft.getContext('2d');
+    const hasFilter=typeof main.filter==='string';
+    const CFG={congela:14,celulas:220, coloniza:20, suelta:5, contagio:0.25, difuminado:0.9, corriente:0.35};
+    let escala=1,W=0,H=0,DPR=1,time=0,col=0,ultimo=0,activo=false,ultT=performance.now();
+    const rnd=(a,b)=>a+Math.random()*(b-a);
+    // ruido suave (el mismo del original)
+    const P=new Uint8Array(512);for(let i=0;i<256;i++)P[i]=i;for(let i=255;i>0;i--){const j=Math.random()*(i+1)|0;[P[i],P[j]]=[P[j],P[i]]}for(let i=0;i<256;i++)P[i+256]=P[i];
+    const fade=t=>t*t*t*(t*(t*6-15)+10),lerp=(a,b,t)=>a+(b-a)*t;
+    function grad(h,x,y){const g=h&3;return((g&1)?-x:x)+((g&2)?-y:y)}
+    function noise(x,y){const X=Math.floor(x)&255,Y=Math.floor(y)&255;x-=Math.floor(x);y-=Math.floor(y);const u=fade(x),v=fade(y);
+      const a=P[X]+Y,b=P[X+1]+Y;return lerp(lerp(grad(P[a],x,y),grad(P[b],x-1,y),u),lerp(grad(P[a+1],x,y-1),grad(P[b+1],x-1,y-1),u),v)}
+    const TIPOS=['diatomea_c','diatomea_p','dino','coco','cadena'];
+    let cells=[],pulses=[],restos=[];
+    // lugares de la mano: palma (cuadrilátero pulgar-muñeca / nudillos) y las tres falanges de cada dedo
+    const dedos=[[[1,2],[2,3],[3,4]],[[5,6],[6,7],[7,8]],[[9,10],[10,11],[11,12]],[[13,14],[14,15],[15,16]],[[17,18],[18,19],[19,20]]];
+    const tramos=[{k:'p',w:0.46}]; const pesoD=[0.11,0.12,0.13,0.12,0.09], parte=[0.42,0.32,0.26];
+    dedos.forEach((f,i)=>f.forEach(([a,b],j)=>tramos.push({k:'d',a,b,w:pesoD[i]*parte[j],j,pul:i===0})));
+    const cdf=[];{let acc=0;tramos.forEach(t=>{acc+=t.w;cdf.push(acc)});cdf.tot=acc;}
+    function lugar(c){ const x=Math.random()*cdf.tot; let k=0; while(cdf[k]<x) k++; const t=tramos[k]; c.k=k;
+      if(t.k==='p'){ c.u=Math.random(); c.v=Math.random(); c.g=Math.min(1,Math.max(0,(1-c.v/2)*0.9+0.05+rnd(-0.04,0.04))); }
+      else { c.u=Math.random(); c.v=rnd(-0.85,0.85); const al=(t.j+c.u)/3, cy=t.pul?0.3+al*1.5:1+al; c.g=Math.min(1,Math.max(0,(1-cy/2)*0.9+0.05+rnd(-0.04,0.04))); } }
+    function mkCell(){
+      const t=TIPOS[Math.random()*TIPOS.length|0], depth=Math.random();
+      const c={t,x:0,y:0,z:depth, s:(t==='cadena'?rnd(2.5,4):rnd(1.6,4.2))*(0.45+depth*0.9),
+        rot:rnd(0,Math.PI*2),vr:rnd(-.01,.01),ph:rnd(0,1e3),glow:0,
+        hue:t==='dino'?rnd(178,196):t==='coco'?rnd(160,176):rnd(166,188), n:t==='cadena'?(rnd(3,7)|0):t==='diatomea_c'?(rnd(8,14)|0):0};
+      c.t0=c.t;c.n0=c.n;c.m=1;c.hT=c.hue;c.vis=0;c.via=-1;c.frio=0; lugar(c); return c; }
+    function infectar(c,o){c.t0=c.t;c.n0=c.n;c.t=o.t;c.n=o.n;c.hT=o.hT;c.m=0;c.glow=Math.max(c.glow,.35)}
+    function contagiar(k){
+      if(k<=0||cells.length<2)return;
+      const G=36,cols=Math.ceil(W/G)+3,grid=new Map();
+      for(const c of cells){ if(c.vis<0.5) continue; const key=((c.x/G|0)+1)+((c.y/G|0)+1)*cols;let b=grid.get(key);if(!b)grid.set(key,b=[]);b.push(c)}
+      const intentos=Math.min(cells.length,60+k*400|0);
+      for(let i=0;i<intentos;i++){const c=cells[Math.random()*cells.length|0];if(c.m<1||c.vis<0.5||c.frio>.4)continue;   // el hielo ya no se contagia
+        const gx=(c.x/G|0)+1,gy=(c.y/G|0)+1;
+        busca:for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){const b=grid.get(gx+dx+(gy+dy)*cols);if(!b)continue;
+          for(const o of b){if(o===c||o.t===c.t||Math.abs(o.z-c.z)>.25)continue;
+            if(Math.hypot(o.x-c.x,o.y-c.y)<G&&Math.random()<k*k*.5){infectar(c,o);break busca}}}}
+    }
+    function resize(){ DPR=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;
+      cv.width=W*DPR;cv.height=H*DPR;main.setTransform(DPR,0,0,DPR,0,0);
+      layer.width=W*DPR;layer.height=H*DPR;lctx.setTransform(DPR,0,0,DPR,0,0);
+      soft.width=Math.ceil(W/4);soft.height=Math.ceil(H/4); }
+    function drawCell(c0,a){
+      const c=Object.assign({},c0,{s:c0.s*escala}); const fr=c0.frio||0, sat=70-50*fr, hu=c.hue+(196-c.hue)*fr; c.hue=hu; const L=Math.min(1,c.glow), lum=55+c.z*14+fr*12, edge=`hsla(${c.hue},${sat}%,${82+fr*8}%,${Math.min(.95,a*1.1)})`;   // contorno nítido: se lee sobre la piel sin brillo extra
+      ctx.save();ctx.translate(c.x,c.y);ctx.rotate(c.rot);
+      const R=c.s*(c.t==='diatomea_p'?2.9:c.t==='dino'?3:c.t==='cadena'?1.4:1.8);
+      const base=ctx.createRadialGradient(-c.s*.3,-c.s*.3,0,0,0,R);
+      base.addColorStop(0,`hsla(${c.hue},${sat}%,${lum+20}%,${a*.03})`);base.addColorStop(.65,`hsla(${c.hue},${sat}%,${lum+10}%,${a*.08})`);base.addColorStop(1,`hsla(${c.hue},${sat+5}%,${lum+15}%,${a*.22})`);
+      if(L>.02){ctx.globalCompositeOperation='lighter';
+        const r=c0.s*(5+L*8)*Math.sqrt(escala);const gg=ctx.createRadialGradient(0,0,0,0,0,r);
+        gg.addColorStop(0,`rgba(30,215,200,${.38*L*Math.max(a,.5)})`);gg.addColorStop(1,'rgba(30,215,200,0)');   // bioluminiscencia: cian sin rojo, al sumarse no quema
+        ctx.fillStyle=gg;ctx.beginPath();ctx.arc(0,0,r,0,7);ctx.fill();ctx.globalCompositeOperation='source-over'}
+      ctx.lineWidth=Math.max(.35,c.s*.12);ctx.strokeStyle=edge;ctx.fillStyle=base;const s=c.s;
+      if(c.m>=1)forma(c.t,s,c.n,c);
+      else{const m=fade(c.m);
+        ctx.save();ctx.globalAlpha=1-m;ctx.scale(1-m*.35,1-m*.35);forma(c.t0,s,c.n0,c);ctx.restore();
+        ctx.save();ctx.globalAlpha=m;const k=.65+m*.35;ctx.scale(k,k);forma(c.t,s,c.n,c);ctx.restore()}
+      ctx.restore();
+    }
+    function forma(t,s,n,c){
+      switch(t){
+        case 'diatomea_c':
+          ctx.beginPath();ctx.arc(0,0,s*1.6,0,7);ctx.fill();ctx.stroke();
+          if(s>2){ctx.beginPath();for(let i=0;i<n;i++){const an=i/n*Math.PI*2;ctx.moveTo(Math.cos(an)*s*.5,Math.sin(an)*s*.5);ctx.lineTo(Math.cos(an)*s*1.5,Math.sin(an)*s*1.5)}ctx.lineWidth=.35;ctx.stroke()}break;
+        case 'diatomea_p':
+          ctx.beginPath();ctx.ellipse(0,0,s*2.8,s*.7,0,0,7);ctx.fill();ctx.stroke();
+          if(s>2){ctx.beginPath();ctx.moveTo(-s*2.4,0);ctx.lineTo(s*2.4,0);ctx.lineWidth=.35;ctx.stroke()}break;
+        case 'dino':
+          ctx.beginPath();ctx.moveTo(0,-s*3);ctx.quadraticCurveTo(s*1.4,-s*.6,s*1.2,s*.6);ctx.lineTo(s*.9,s*2.6);
+          ctx.lineTo(s*.2,s*1.1);ctx.lineTo(-s*.6,s*2);ctx.quadraticCurveTo(-s*1.5,0,0,-s*3);ctx.fill();ctx.stroke();
+          ctx.beginPath();ctx.moveTo(-s*1.2,0);ctx.lineTo(s*1.2,0);ctx.lineWidth=.4;ctx.stroke();
+          ctx.beginPath();ctx.moveTo(0,s*1);for(let i=1;i<6;i++)ctx.lineTo(Math.sin(time*.2+c.ph+i)*s*.6,s+i*s*.7);ctx.stroke();break;
+        case 'coco':
+          ctx.beginPath();ctx.arc(0,0,s*1.3,0,7);ctx.fill();
+          for(let i=0;i<7;i++){const an=i/7*Math.PI*2;ctx.beginPath();ctx.ellipse(Math.cos(an)*s*1.2,Math.sin(an)*s*1.2,s*.55,s*.32,an,0,7);ctx.stroke()}break;
+        case 'cadena':
+          for(let i=0;i<n;i++){const x=(i-(n-1)/2)*s*1.9+Math.sin(time*.02+c.ph+i)*s*.15;
+            ctx.beginPath();ctx.rect(x-s*.8,-s*.6,s*1.6,s*1.2);ctx.fill();ctx.stroke();
+            if(s>2.4){ctx.beginPath();ctx.moveTo(x,-s*.6);ctx.lineTo(x+s*1.2,-s*3);ctx.moveTo(x,s*.6);ctx.lineTo(x-s*1.2,s*3);ctx.lineWidth=.3;ctx.stroke()}}break;
+      }
+    }
+    // la mano en pantalla (px), con la misma predicción de movimiento que usa la nube
+    const Lp=[]; for(let i=0;i<21;i++) Lp.push({x:0,y:0,vx:0,vy:0}); let visto=false;
     function leerMano(){
       const M=window.HZMano; if(!M||!M.lm||!M.src||performance.now()-M.t>400) return false;
       const sr=M.src.getBoundingClientRect(), adel=Math.min(90,performance.now()-M.t+40);
       for(let i=0;i<21;i++){ const l=M.lm[i], v=M.vel&&M.vel[i];
         const x=sr.left+(l.x+(v?v.x*adel:0))*sr.width, y=sr.top+(l.y+(v?v.y*adel:0))*sr.height, q=Lp[i];
         if(!visto){ q.x=x; q.y=y; q.vx=q.vy=0; } else { const nx=q.x+(x-q.x)*0.6, ny=q.y+(y-q.y)*0.6; q.vx=nx-q.x; q.vy=ny-q.y; q.x=nx; q.y=ny; } }
-      if(!visto){ visto=true; }
+      if(!visto){ visto=true; [4,8,12,16,20].forEach(i=>poke(Lp[i].x,Lp[i].y,.35)); }
       return true;
     }
-    // LA MANO REAL: la silueta sale de la imagen de la cámara (los píxeles de piel alrededor del esqueleto que da MediaPipe),
-    // así los dedos son los tuyos: uñas, nudillos, borde real. Sobre esa silueta avanza la invasión: nace en la punta
-    // de cada dedo y baja hasta la muñeca con un borde irregular, píxel a píxel.
-    const SEG=[];   // [a,b,g en a,g en b,radio relativo]
-    [[1,2,3,4],[5,6,7,8],[9,10,11,12],[13,14,15,16],[17,18,19,20]].forEach((f,fi)=>{ const r=fi===0?.17:.14;
-      SEG.push([f[0],f[1],.40,.27,r],[f[1],f[2],.27,.14,r],[f[2],f[3],.14,0,r*.9]); });
-    [[0,5],[0,9],[0,13],[0,17],[0,1]].forEach(([a,b])=>SEG.push([a,b,1,.40,.36]));
-    const cv2=document.createElement('canvas'), c2=cv2.getContext('2d',{willReadFrequently:true});
-    const hs=(x,y)=>{ const v=Math.sin(x*127.1+y*311.7)*43758.5453; return v-Math.floor(v); };
-    const vn=(x,y)=>{ const ix=Math.floor(x),iy=Math.floor(y),fx=x-ix,fy=y-iy,sx=fx*fx*(3-2*fx),sy=fy*fy*(3-2*fy);
-      const a=hs(ix,iy),b=hs(ix+1,iy),c=hs(ix,iy+1),d=hs(ix+1,iy+1); return a+(b-a)*sx+(c-a)*sy+(a-b-c+d)*sx*sy; };
-    const croma=(r,g,b)=>[0.5*r-0.4187*g-0.0813*b, -0.1687*r-0.3313*g+0.5*b];
-    function mascara(){
-      const M=window.HZMano, src=M&&M.src; if(!src) return;
-      const E=4, w=mk.width, h=mk.height; if(cv2.width!==w||cv2.height!==h){ cv2.width=w; cv2.height=h; }
-      const sr=src.getBoundingClientRect(); c2.clearRect(0,0,w,h);
-      try{ c2.drawImage(src,sr.left/E,sr.top/E,sr.width/E,sr.height/E); }catch(e){ return; }
-      let px; try{ px=c2.getImageData(0,0,w,h); }catch(e){ return; }
-      const d=px.data, pal=Math.hypot(Lp[9].x-Lp[0].x,Lp[9].y-Lp[0].y)||100;
-      // color de la piel: se mide en la palma, entre los nudillos y la muñeca
-      const ref=[0,0]; let nr=0;
-      for(const [a,b] of [[0,9],[0,5],[0,13],[5,9],[9,13],[13,17]]) for(const t of [.35,.55,.75]){
-        const x=((Lp[a].x+(Lp[b].x-Lp[a].x)*t)/E)|0, y=((Lp[a].y+(Lp[b].y-Lp[a].y)*t)/E)|0; if(x<0||y<0||x>=w||y>=h) continue;
-        const k=(y*w+x)*4, c=croma(d[k],d[k+1],d[k+2]); ref[0]+=c[0]; ref[1]+=c[1]; nr++; }
-      if(nr){ ref[0]/=nr; ref[1]/=nr; }
-      // caja de la mano
-      let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; for(const q of Lp){ x0=Math.min(x0,q.x); y0=Math.min(y0,q.y); x1=Math.max(x1,q.x); y1=Math.max(y1,q.y); }
-      const pad=pal*.35; x0=Math.max(0,((x0-pad)/E)|0); y0=Math.max(0,((y0-pad)/E)|0); x1=Math.min(w-1,((x1+pad)/E)|0); y1=Math.min(h-1,((y1+pad)/E)|0);
-      const fr=col*1.12, sg=SEG.map(s=>{ const A=Lp[s[0]],B=Lp[s[1]]; return [A.x/E,A.y/E,(B.x-A.x)/E,(B.y-A.y)/E,s[2],s[3],s[4]*pal/E]; });
-      const out=m.createImageData(w,h), o2=out.data;
-      for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
-        let best=1e9,g=1,lat=0,si=0;
-        for(let n=0;n<sg.length;n++){ const s=sg[n], L2=s[2]*s[2]+s[3]*s[3]||1; let t=((x-s[0])*s[2]+(y-s[1])*s[3])/L2; t=t<0?0:t>1?1:t;
-          const dx=x-s[0]-s[2]*t, dy=y-s[1]-s[3]*t, dd=Math.sqrt(dx*dx+dy*dy)/s[6];
-          if(dd<best){ best=dd; g=s[4]+(s[5]-s[4])*t; lat=dd; si=n+t; } }
-        if(best>1.25) continue;                                   // lejos del esqueleto: no es mano
-        const k=(y*w+x)*4, c=croma(d[k],d[k+1],d[k+2]), dc=Math.hypot(c[0]-ref[0],c[1]-ref[1]);
-        const piel=nr?Math.max(0,Math.min(1,(22-dc)/10)):1;        // parecido al color de la piel medida
-        const cerca=best<0.55?1:Math.max(0,(1.25-best)/0.7);        // el centro del dedo siempre cuenta
-        const punta=si<15&&(Math.floor(si)%3===2)&&(si%1)>0.75;
-        const en=Math.max(piel*cerca, (si<15&&best<0.45&&!punta)?1:0);   // en los dedos el centro siempre cuenta; en la palma decide la piel
-        if(en<=0) continue;
-        const ruido=vn(si*2.3,lat*3)*0.10+vn(si*7.1+3,lat*9)*0.04;  // borde del avance irregular
-        const a=Math.max(0,Math.min(1,(fr-g-ruido+0.07)/0.06));
-        o2[k]=o2[k+1]=o2[k+2]=255; o2[k+3]=(255*a*en)|0; }
-      m.setTransform(1,0,0,1,0,0); m.putImageData(out,0,0);
+    // dónde está el glaciar (la tarjeta) en la pantalla: de ahí sale el plancton hacia la mano
+    const carta={x:0,y:0,r:80,ok:false};
+    function leerCarta(){ const sc=document.querySelector('a-scene'), cam=sc&&sc.camera, T=window.AFRAME&&AFRAME.THREE; if(!cam||!T) return;
+      const cr=sc.renderer?sc.renderer.domElement.getBoundingClientRect():{left:0,top:0,width:W,height:H};
+      for(const an of document.querySelectorAll('.hz-ancla,[mindar-image-target]')){ const o=an.object3D; if(!o||!o.visible) continue;
+        o.updateMatrixWorld(); const a=new T.Vector3(0,0,0).applyMatrix4(o.matrixWorld).project(cam), b=new T.Vector3(0.5,0,0).applyMatrix4(o.matrixWorld).project(cam);
+        if(a.z>1) continue; carta.x=cr.left+(a.x*.5+.5)*cr.width; carta.y=cr.top+(-a.y*.5+.5)*cr.height;
+        carta.r=Math.max(30,Math.hypot((b.x-a.x)*.5*cr.width,(b.y-a.y)*.5*cr.height)); carta.ok=true; return; } }
+    function pos(c){
+      const t=tramos[c.k];
+      if(t.k==='p'){ const a=Lp[1],b=Lp[0], ps=c.u, pt=c.v;
+        const bx=a.x+(b.x-a.x)*ps, by=a.y+(b.y-a.y)*ps;
+        const seg=ps<1/3?[5,9,ps*3]:ps<2/3?[9,13,ps*3-1]:[13,17,ps*3-2], A=Lp[seg[0]], B=Lp[seg[1]];
+        const tx=A.x+(B.x-A.x)*seg[2], ty=A.y+(B.y-A.y)*seg[2];
+        c.x=bx+(tx-bx)*pt; c.y=by+(ty-by)*pt; }
+      else { const A=Lp[t.a],B=Lp[t.b], dx=B.x-A.x, dy=B.y-A.y, len=Math.hypot(dx,dy)||1, pal=Math.hypot(Lp[9].x-Lp[0].x,Lp[9].y-Lp[0].y);
+        const r=pal*(t.pul?0.13:0.105)*(1-0.12*t.j);
+        c.x=A.x+dx*c.u-dy/len*c.v*r; c.y=A.y+dy*c.u+dx/len*c.v*r; }
     }
-    function cuadro(){
-      requestAnimationFrame(cuadro);
+    function poke(x,y,f=1){pulses.push({x,y,r:0,a:1*f});for(const c of cells){const d=Math.hypot(c.x-x,c.y-y);if(d<120*f)c.glow=Math.max(c.glow,1.2-d/(120*f))}}
+    function frame(){
+      requestAnimationFrame(frame);
       const ahora=performance.now(), st=Math.min(0.05,(ahora-ultT)/1000); ultT=ahora;
-      const hay=leerMano();
+      const hay=leerMano(); leerCarta();
+      if(hay) ultimo=ahora;
       col=Math.max(0,Math.min(1,col+(hay?st/CFG.coloniza:-st/CFG.suelta)));
       if(typeof window.hzPlanctonForzar==='number') col=window.hzPlanctonForzar;
-      const on=col>0.01;
-      if(on!==activo){ activo=on; document.querySelectorAll('.mindar-ui-scanning').forEach(e=>{ e.style.visibility=on?'hidden':''; });
-        if(!on){ o.setTransform(1,0,0,1,0,0); o.clearRect(0,0,ov.width,ov.height); o.setTransform(D,0,0,D,0,0); visto=false; } }
-      if(!on){ if(!hay) visto=false; return; }
-      if(Wo!==innerWidth||Ho!==innerHeight){ tam(); ABISMO.resize(); }
-      // los dedos que se mueven encienden la bioluminiscencia de la obra
-      if(hay) for(const i of [4,8,12,16,20]){ const q=Lp[i]; q.cd=(q.cd||0)-st; if(Math.hypot(q.vx,q.vy)>22&&q.cd<=0){ ABISMO.poke(q.x,q.y,.25); q.cd=0.8; } }
-      ABISMO.frame();
-      if((cuadro.n=(cuadro.n||0)+1)%2===0) mascara();
-      o.setTransform(1,0,0,1,0,0); o.globalCompositeOperation='source-over'; o.clearRect(0,0,ov.width,ov.height);
-      o.drawImage(ABISMO.cv,0,0,ov.width,ov.height);
-      o.globalCompositeOperation='destination-in'; o.imageSmoothingEnabled=true; o.imageSmoothingQuality='high'; o.drawImage(mk,0,0,ov.width,ov.height); o.globalCompositeOperation='source-over'; o.setTransform(D,0,0,D,0,0);
+      if(col<=0&&!hay){ if(frame.ui){ frame.ui=false; document.querySelectorAll('.mindar-ui-scanning').forEach(e=>{ e.style.visibility=''; }); }
+        if(activo){ main.clearRect(0,0,W,H); activo=false; visto=false; cells.forEach(c=>{c.vis=0;c.via=-1;c.frio=0; lugar(c);}); } return; }
+      if(!activo){ activo=true; if(W!==innerWidth||H!==innerHeight) resize(); }
+      { const on=col>0.01; if(on!==frame.ui){ frame.ui=on; document.querySelectorAll('.mindar-ui-scanning').forEach(e=>{ e.style.visibility=on?'hidden':''; }); } }
+      if(W!==innerWidth||H!==innerHeight) resize();
+      time+=1; const cur=CFG.corriente, dt=1;
+      if(hay){ const pal=Math.hypot(Lp[9].x-Lp[0].x,Lp[9].y-Lp[0].y); escala+=(Math.min(1.3,Math.max(1,pal/180))-escala)*.1; }
+      const sueltas=!hay;   // sin mano: las células se sueltan y caen como restos
+      for(const c of cells){
+        // deriva sobre la piel (la corriente del original, en las coordenadas de la mano)
+        const n=noise(c.u*3+time*.004+c.ph,c.v*3+c.ph*.37), vivo=1-c.frio;   // congelada, deja de derivar
+        c.u+=Math.cos(n*Math.PI*2)*.0025*(.3+c.z*.9)*vivo; c.v+=Math.sin(n*Math.PI*2)*.004*(.3+c.z)*vivo;
+        if(tramos[c.k].k==='p'){ c.u=Math.min(1,Math.max(0,c.u)); c.v=Math.min(1,Math.max(0,c.v)); }
+        else { if(c.u<0||c.u>1) c.u=Math.min(1,Math.max(0,c.u)); c.v=Math.max(-0.9,Math.min(0.9,c.v)); }
+        const meta=col*1.1>c.g?1:0;
+        if(meta&&c.via<0){ c.via=0; const an=Math.random()*6.283, rr=Math.sqrt(Math.random())*carta.r;
+          c.ox=(carta.ok?carta.x:W*.5)+Math.cos(an)*rr; c.oy=(carta.ok?carta.y:H*.85)+Math.sin(an)*rr*.7; }
+        if(!sueltas){ pos(c);
+          if(c.via>=0&&c.via<1){ c.via=Math.min(1,c.via+st/(2.2+c.ph%1.6)); const e=c.via*c.via*(3-2*c.via), dx=c.x-c.ox, dy=c.y-c.oy, dl=Math.hypot(dx,dy)||1;
+            const cur2=Math.sin(e*3.1416)*(noise(c.ph,time*.01)*.6+.25)*dl*.35;    // nada en curva, no en línea recta
+            c.x=c.ox+dx*e-dy/dl*cur2; c.y=c.oy+dy*e+dx/dl*cur2; }
+          else if(c.via>=1) c.frio=Math.min(1,c.frio+st/CFG.congela); }      // ya en la piel: de a poco se vuelve hielo
+        else { c.y+=.4+c.z*.6; c.x+=Math.sin(time*.02+c.ph)*.3+cur*.4; }
+        c.vis+=(meta-c.vis)*.06;
+        c.rot+=c.vr*(1-c.frio); c.glow*=.965; if(Math.random()<.00015)c.glow=.6;
+        if(c.m<1)c.m=Math.min(1,c.m+.012*dt); c.hue+=(c.hT-c.hue)*.03;
+      }
+      // los dedos que se mueven encienden la bioluminiscencia, como el puntero en el original
+      if(hay) for(const i of [4,8,12,16,20]){ const q=Lp[i], sp=Math.hypot(q.vx,q.vy); if(sp<3) continue;
+        for(const c of cells){ const d=Math.hypot(c.x-q.x,c.y-q.y); if(d<60) c.glow=Math.max(c.glow,(1-d/60)*Math.min(1,sp/18)); } }
+      contagiar(CFG.contagio);
+      cells.sort((a,b)=>a.z-b.z);
+      main.clearRect(0,0,W,H); lctx.clearRect(0,0,W,H); ctx=lctx;
+      for(const c of cells){ const a=(.22+c.z*.7)*c.vis*Math.min(1,col*3); if(a>.005) drawCell(c,a); }
+      ctx=main;
+      const blurPx=CFG.difuminado;
+      if(blurPx>0&&hasFilter){main.filter=`blur(${blurPx}px)`;main.drawImage(layer,0,0,W,H);main.filter='none';main.globalAlpha=.35;main.drawImage(layer,0,0,W,H);main.globalAlpha=1}
+      else if(blurPx>0){sctx.clearRect(0,0,soft.width,soft.height);sctx.drawImage(layer,0,0,soft.width,soft.height);
+        main.globalAlpha=Math.max(.4,1-blurPx/4);main.drawImage(layer,0,0,W,H);main.globalAlpha=Math.min(.8,blurPx/3);main.imageSmoothingQuality='high';main.drawImage(soft,0,0,W,H);main.globalAlpha=1}
+      else main.drawImage(layer,0,0,W,H);
+      main.globalCompositeOperation='lighter';
+      for(let i=pulses.length-1;i>=0;i--){const p=pulses[i];p.r+=3;p.a*=.94;
+        main.beginPath();main.arc(p.x,p.y,p.r,0,7);main.strokeStyle=`rgba(30,215,200,${p.a*.4})`;main.lineWidth=.8;main.stroke();
+        if(p.a<.02)pulses.splice(i,1)}
+      main.globalCompositeOperation='source-over';
     }
-    function iniciar(){ if(iniciar.ok) return; iniciar.ok=true; document.body.appendChild(ov); tam(); ABISMO.resize(); requestAnimationFrame(cuadro); }
+    function iniciar(){ if(iniciar.ok) return; iniciar.ok=true; document.body.appendChild(cv); resize();
+      cells=Array.from({length:CFG.celulas},mkCell); addEventListener('resize',resize); requestAnimationFrame(frame); }
     if(document.readyState==='loading') addEventListener('DOMContentLoaded',iniciar); else iniciar();
     return {CFG,get col(){return col}};
   })();
@@ -3006,7 +2839,7 @@ return {cv,resize,frame,poke:(x,y,f)=>poke(x,y,f),get W(){return W}};
     tick(t,dt){
       this.pasoMano(Math.min(0.05,(dt||16)/1000));
       if(!this.running){ if(this.anchor.components&&this.anchor.components['mindar-image-target']&&this.anchor.object3D.visible) this.start(); if(!this.running) return; }
-      if(!this.pts) return; { const mA=window.HZMano&&HZMano.lm&&performance.now()-HZMano.t<400; if(mA&&this.u.uGen.value<0.05){ this.pts.visible=false; } else if(!this.pts.visible&&!(this.manoPts&&this.manoPts.visible)) this.pts.visible=true; }
+      if(!this.pts) return; if(!this.pts.visible&&!(this.manoPts&&this.manoPts.visible)) this.pts.visible=true;
       const d=this.data, st=Math.min(0.05,(dt||16)/1000); this.t+=st;
       // movimiento de quien mira: cuánto gira la dirección de la cámara vista desde la escena
       const cam=this.el.sceneEl.camera;
@@ -3024,8 +2857,7 @@ return {cv,resize,frame,poke:(x,y,f)=>poke(x,y,f),get W(){return W}};
         this.morph=Math.min(1,(this.morph||0)+st*(1/d.morphDura+d.morphMov*mov)); }
       this.u.uMorph.value=this.morph||0;
       if(d.genera){ let kc=+window.hzCalor; if(!isFinite(kc)) kc=0.5; if(typeof window.hzForzarGen==='number') kc=window.hzForzarGen;
-        const manoAhi=window.HZMano&&HZMano.lm&&performance.now()-HZMano.t<400;
-        const meta=manoAhi?0:Math.min(1,Math.max(0,(kc-d.genDesde)/(d.genHasta-d.genDesde)));
+        const meta=Math.min(1,Math.max(0,(kc-d.genDesde)/(d.genHasta-d.genDesde)));
         this.u.uGen.value+=(meta-this.u.uGen.value)*Math.min(1,st*(meta>this.u.uGen.value?0.9:0.5)); }
       this.tt=(this.tt||0)+st; this.u.uTermo.value=d.termo*Math.min(1,Math.max(0,(this.tt-d.termoEspera)/d.termoDura));   // tiempo acumulado: no se reinicia al perder la tarjeta   // lentamente, hacia la cámara térmica
       if(this.marcas){ const a=Math.min(1,this.t/1.5)*Math.min(1,Math.max(0,(this.u.uGen.value-0.15)/0.35));   // visibles mientras se ve la tarjeta, a medida que la nube se genera
@@ -4469,6 +4301,74 @@ return {cv,resize,frame,poke:(x,y,f)=>poke(x,y,f),get W(){return W}};
 
     // (antes recargaba la página al girar el teléfono: eso reiniciaba todo y podía traer el index viejo guardado; se quitó)
   </script>
+
+
+<!-- ESCENA ABISAL: se muestra solamente cuando MediaPipe reconoce una mano.
+     El detector y la cámara permanecen activos en la página principal. -->
+<style>
+  #hz-abisal-escena {position:fixed;inset:0;z-index:100300;display:none;background:#02080d;overflow:hidden}
+  #hz-abisal-escena.hz-visible {display:block}
+  #hz-abisal-mar {position:absolute;inset:0;border:0;width:100%;height:100%;pointer-events:none}
+  #hz-abisal-cerrar {position:absolute;top:max(14px, env(safe-area-inset-top));right:max(14px, env(safe-area-inset-right));z-index:2;background:rgba(2,8,13,.8);border:1px solid rgba(127,243,220,.55);border-radius:5px;color:#cfe6e4;padding:10px 13px;font:12px monospace;cursor:pointer}
+  #hz-abisal-etiqueta {position:absolute;left:20px;top:max(18px, env(safe-area-inset-top));z-index:2;color:#7ff3dc;font:11px monospace;letter-spacing:.12em;pointer-events:none}
+</style>
+<div id="hz-abisal-escena" aria-hidden="true">
+  <iframe id="hz-abisal-mar" title="Fitoplancton abisal" loading="lazy" data-src="fitoplancton-abisal.html"></iframe>
+  <span id="hz-abisal-etiqueta">MANO DETECTADA · FITOPLANCTON ABISAL</span>
+  <button id="hz-abisal-cerrar" type="button" aria-label="Volver a la cámara">VOLVER A CÁMARA ×</button>
+</div>
+<script>
+(function(){
+  const scene=document.getElementById('hz-abisal-escena');
+  const iframe=document.getElementById('hz-abisal-mar');
+  const close=document.getElementById('hz-abisal-cerrar');
+  let presentSince=0, absentSince=0, dismissedUntilGone=false;
+  const SHOW_MS=450, HIDE_MS=2200;
+  function show(){
+    if(!iframe.src) iframe.src=iframe.dataset.src;
+    scene.classList.add('hz-visible');
+    scene.setAttribute('aria-hidden','false');
+    // Evita dos sistemas de plancton superpuestos.
+    const old=document.getElementById('hz-plancton');
+    if(old)old.style.visibility='hidden';
+  }
+  function hide(){
+    scene.classList.remove('hz-visible');
+    scene.setAttribute('aria-hidden','true');
+    const old=document.getElementById('hz-plancton');
+    if(old)old.style.visibility='';
+  }
+  close.addEventListener('click',()=>{dismissedUntilGone=true;hide()});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&scene.classList.contains('hz-visible')){dismissedUntilGone=true;hide()}});
+  // Reutiliza la detección existente en vez de abrir otra cámara.
+  function tick(){
+    const now=performance.now();
+    const m=window.HZMano;
+    const live=!!(m&&m.lm&&now-m.t<450);
+    if(live){
+      absentSince=0;
+      if(!presentSince)presentSince=now;
+      if(!dismissedUntilGone&&now-presentSince>SHOW_MS&&!scene.classList.contains('hz-visible'))show();
+      if(scene.classList.contains('hz-visible')&&iframe.contentWindow&&m.lm[8]){
+        iframe.contentWindow.postMessage({type:'hz-mano-plancton',x:m.lm[8].x,y:m.lm[8].y},location.origin);
+      }
+    }else{
+      presentSince=0;
+      if(!absentSince)absentSince=now;
+      if(now-absentSince>HIDE_MS){
+        dismissedUntilGone=false;
+        if(scene.classList.contains('hz-visible'))hide();
+      }
+    }
+  }
+  setInterval(tick,100);
+  // Iniciar el reconocedor cuando la cámara de MindAR esté lista.
+  document.addEventListener('DOMContentLoaded',()=>{
+    const ar=document.querySelector('a-scene');
+    if(ar)ar.addEventListener('arReady',()=>window.HZMano?.iniciar(),{once:true});
+  });
+})();
+</script>
 
 </body>
 </html>
