@@ -2344,8 +2344,9 @@
     const layer=document.createElement('canvas'), lctx=layer.getContext('2d');
     const soft=document.createElement('canvas'), sctx=soft.getContext('2d');
     const hasFilter=typeof main.filter==='string';
-    const CFG={congela:14,celulas:220, coloniza:20, suelta:5, contagio:0.25, difuminado:0.9, corriente:0.35};
+    const CFG={congela:14,celulas:420, inicial:35, intervaloNacimiento:0.75, coloniza:20, suelta:5, contagio:0.25, difuminado:0.9, corriente:0.35};
     let escala=1,W=0,H=0,DPR=1,time=0,col=0,ultimo=0,activo=false,ultT=performance.now();
+    let relojNacimiento=0, actividadMano=0;
     const rnd=(a,b)=>a+Math.random()*(b-a);
     // ruido suave (el mismo del original)
     const P=new Uint8Array(512);for(let i=0;i<256;i++)P[i]=i;for(let i=255;i>0;i--){const j=Math.random()*(i+1)|0;[P[i],P[j]]=[P[j],P[i]]}for(let i=0;i<256;i++)P[i+256]=P[i];
@@ -2460,6 +2461,27 @@
       const ahora=performance.now(), st=Math.min(0.05,(ahora-ultT)/1000); ultT=ahora;
       const hay=leerMano(); leerCarta();
       if(hay) ultimo=ahora;
+      // Poblacion acumulativa dentro del MISMO canvas de MindAR: nunca abre otra pagina.
+      // La mano acelera nacimientos; sin mano no se agregan celulas.
+      if(hay && cells.length<CFG.celulas){
+        const v=(window.HZMano&&window.HZMano.vel)||[];
+        const gesto=v.length?Math.min(1,Math.hypot(v[8].x||0,v[8].y||0)*130):0;
+        actividadMano=Math.min(1,actividadMano*0.96+gesto*0.04);
+        relojNacimiento+=st*(1+actividadMano*3);
+        const intervalo=Math.max(0.2,CFG.intervaloNacimiento);
+        let nuevos=0;
+        while(relojNacimiento>=intervalo && cells.length<CFG.celulas && nuevos<5){
+          relojNacimiento-=intervalo;
+          const nueva=mkCell();
+          // Herencia ocasional de la especie de una vecina: proliferacion biologica.
+          if(cells.length && Math.random()<0.65){
+            const madre=cells[Math.floor(Math.random()*cells.length)];
+            nueva.t=nueva.t0=madre.t; nueva.n=nueva.n0=madre.n;
+            nueva.hue=nueva.hT=madre.hT;
+          }
+          cells.push(nueva); nuevos++;
+        }
+      }
       col=Math.max(0,Math.min(1,col+(hay?st/CFG.coloniza:-st/CFG.suelta)));
       if(typeof window.hzPlanctonForzar==='number') col=window.hzPlanctonForzar;
       if(col<=0&&!hay){ if(frame.ui){ frame.ui=false; document.querySelectorAll('.mindar-ui-scanning').forEach(e=>{ e.style.visibility=''; }); }
@@ -2509,7 +2531,7 @@
       main.globalCompositeOperation='source-over';
     }
     function iniciar(){ if(iniciar.ok) return; iniciar.ok=true; document.body.appendChild(cv); resize();
-      cells=Array.from({length:CFG.celulas},mkCell); addEventListener('resize',resize); requestAnimationFrame(frame); }
+      cells=Array.from({length:Math.min(CFG.celulas,CFG.inicial)},mkCell); addEventListener('resize',resize); requestAnimationFrame(frame); }
     if(document.readyState==='loading') addEventListener('DOMContentLoaded',iniciar); else iniciar();
     return {CFG,get col(){return col}};
   })();
