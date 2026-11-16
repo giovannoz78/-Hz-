@@ -2308,7 +2308,7 @@
       if(M.cargando) return; M.cargando=true;
       const s=document.createElement('script'); s.src=CDN+'hands.js'; s.crossOrigin='anonymous';
       s.onload=()=>{ try{ const h=new Hands({locateFile:f=>CDN+f});
-        h.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:0.6,minTrackingConfidence:0.5,selfieMode:false});
+        h.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:0.4,minTrackingConfidence:0.3,selfieMode:false});
         h.onResults(r=>{ const L=(r.multiHandLandmarks&&r.multiHandLandmarks[0])||null, ahora=performance.now();
           if(L&&M.lm&&ahora-M.t<200){ const dt=Math.max(16,ahora-M.t); M.vel=L.map((p,i)=>({x:(p.x-M.lm[i].x)/dt,y:(p.y-M.lm[i].y)/dt})); } else M.vel=null;
           M.lm=L; M.t=ahora; });
@@ -2328,9 +2328,9 @@
   })();
   addEventListener('DOMContentLoaded',()=>{ let v=document.getElementById('hz-version'); if(!v){ v=document.createElement('div'); v.id='hz-version'; }
     v.style.cssText='position:fixed;left:8px;top:8px;z-index:99999;font:500 10px Menlo,monospace;color:#fff;opacity:.6;pointer-events:none';
-    v.textContent='v 16/11c plancton'; document.body.appendChild(v);
+    v.textContent='v 16/11d plancton'; document.body.appendChild(v);
     setInterval(()=>{ const M=window.HZMano; const e=M.err?'error':!M.cargando?'espera':!M.h?'cargando':(M.lm&&performance.now()-M.t<400)?'detectada':'buscando';
-      v.textContent='v 16/11c plancton · mano: '+e; },500); });
+      v.textContent='v 16/11d plancton · mano: '+e; },500); });
   </script>
   <!-- FITOPLANCTON SOBRE LA MANO: cuando MediaPipe ve la mano, el fitoplancton abisal la coloniza.
        Las células (diatomeas, dinoflagelados, cocolitofóridos, cadenas) nacen en las yemas y avanzan hacia la muñeca,

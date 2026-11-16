@@ -4,7 +4,7 @@
 // adentro del contorno verdadero, entre los dedos, y la piel se sigue viendo debajo.
 // Necesita window.HZMano (MediaPipe Hands) y una imagen: HZPiel.imagen(url).
 window.HZPiel = window.HZPiel || (function () {
-  const CFG = { modo: 'plancton', plancton: false, avance: 9, suelta: 0.8, espera: 400, debug: false };
+  const CFG = { modo: 'plancton', plancton: false, avance: 5, suelta: 1.2, olvida: 6, espera: 400, debug: false };
   const cv = document.createElement('canvas'); cv.id = 'hz-piel';
   cv.style.cssText = 'position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:99991';
   const gl = cv.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: false });
@@ -156,21 +156,26 @@ window.HZPiel = window.HZPiel || (function () {
     ref.conf += ((cromo > .025 && parejo ? 1 : .35) - ref.conf) * .2;
   }
 
-  let F = 0, A = 0, T = 0, ult = performance.now(), visto = false, cuadro = 0;
+  let perdida = 0, F = 0, A = 0, T = 0, ult = performance.now(), visto = false, cuadro = 0;
   const E = new Float32Array(10), L = new Float32Array(42), Lp = Array.from({ length: 21 }, () => ({ x: 0, y: 0 }));
   function frame() {
     requestAnimationFrame(frame); if (!ok) return;
     const ahora = performance.now(), st = Math.min(.05, (ahora - ult) / 1000); ult = ahora; T += st;
     const M = window.HZMano, src = window.hzManoFuente || (M && M.src) || document.querySelector('video');
     const hay = !!(M && M.lm && src && ahora - M.t < CFG.espera);
-    if (hay) { F = Math.min(1.25, F + st / CFG.avance * 1.25); A = Math.min(1, A + st * 3); }
-    else { A = Math.max(0, A - st / CFG.suelta); if (A <= 0) { F = 0; visto = false; } }
+    const reciente = !!(M && M.lm && src && ahora - M.t < 1200);   // pérdidas cortas: la mano sigue donde iba
+    if (hay) { F = Math.max(F, .2); F = Math.min(1.25, F + st / CFG.avance * 1.25); A = Math.min(1, A + st * 4); perdida = 0; }
+    else { perdida += st; A = Math.max(0, A - st / CFG.suelta * (reciente ? .5 : 1.5));
+      if (perdida > CFG.olvida) { F = 0; visto = false; } }   // el plancton se queda en la piel aunque se pierda un rato
     if (typeof window.hzPielForzar === 'number') F = window.hzPielForzar;
     const DPR = Math.min(devicePixelRatio || 1, 2), W = innerWidth, H = innerHeight;
     if (cv.width !== Math.round(W * DPR) || cv.height !== Math.round(H * DPR)) { cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR); }
     gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
     if (A <= 0 || !src || !(src.videoWidth || src.naturalWidth)) return;
     const sr = src.getBoundingClientRect();
+    if (!hay && M && M.lm && M.vel && ahora - M.t < 1200) {
+      const k = Math.max(0, 1 - (ahora - M.t) / 600);
+      for (let i = 0; i < 21; i++) { const v = M.vel[i]; Lp[i].x += v.x * sr.width * st * 1000 * k * .6; Lp[i].y += v.y * sr.height * st * 1000 * k * .6; } }
     if (hay) {
       const adel = Math.min(80, ahora - M.t + 30);   // adelanta la mano lo que tarda MediaPipe en leerla
       for (let i = 0; i < 21; i++) { const l = M.lm[i], v = M.vel && M.vel[i];
