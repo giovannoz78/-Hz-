@@ -2328,9 +2328,9 @@
   })();
   addEventListener('DOMContentLoaded',()=>{ let v=document.getElementById('hz-version'); if(!v){ v=document.createElement('div'); v.id='hz-version'; }
     v.style.cssText='position:fixed;left:8px;top:8px;z-index:99999;font:500 10px Menlo,monospace;color:#fff;opacity:.6;pointer-events:none';
-    v.textContent='v 22/10 glaciar'; document.body.appendChild(v);
+    v.textContent='v 16/11c plancton'; document.body.appendChild(v);
     setInterval(()=>{ const M=window.HZMano; const e=M.err?'error':!M.cargando?'espera':!M.h?'cargando':(M.lm&&performance.now()-M.t<400)?'detectada':'buscando';
-      v.textContent='v 22/10 glaciar · mano: '+e; },500); });
+      v.textContent='v 16/11c plancton · mano: '+e; },500); });
   </script>
   <!-- FITOPLANCTON SOBRE LA MANO: cuando MediaPipe ve la mano, el fitoplancton abisal la coloniza.
        Las células (diatomeas, dinoflagelados, cocolitofóridos, cadenas) nacen en las yemas y avanzan hacia la muñeca,
@@ -2344,7 +2344,7 @@
     const layer=document.createElement('canvas'), lctx=layer.getContext('2d');
     const soft=document.createElement('canvas'), sctx=soft.getContext('2d');
     const hasFilter=typeof main.filter==='string';
-    const CFG={congela:14,celulas:220, coloniza:1.2, suelta:0.7, contagio:0.25, difuminado:0.9, corriente:0.35};
+    const CFG={congela:14,celulas:600, coloniza:1.2, suelta:0.7, contagio:0.25, difuminado:0.9, corriente:0.35};
     let escala=1,W=0,H=0,DPR=1,time=0,col=0,ultimo=0,activo=false,ultT=performance.now();
     const rnd=(a,b)=>a+Math.random()*(b-a);
     // ruido suave (el mismo del original)
@@ -2451,7 +2451,7 @@
         const tx=A.x+(B.x-A.x)*seg[2], ty=A.y+(B.y-A.y)*seg[2];
         c.x=bx+(tx-bx)*pt; c.y=by+(ty-by)*pt; }
       else { const A=Lp[t.a],B=Lp[t.b], dx=B.x-A.x, dy=B.y-A.y, len=Math.hypot(dx,dy)||1, pal=Math.hypot(Lp[9].x-Lp[0].x,Lp[9].y-Lp[0].y);
-        const r=pal*(t.pul?0.13:0.105)*(1-0.12*t.j);
+        const r=pal*(t.pul?0.24:0.2)*(1-0.12*t.j);   // más ancho que el dedo: piel.js recorta por la piel real
         c.x=A.x+dx*c.u-dy/len*c.v*r; c.y=A.y+dy*c.u+dx/len*c.v*r; }
     }
     function poke(x,y,f=1){pulses.push({x,y,r:0,a:1*f});for(const c of cells){const d=Math.hypot(c.x-x,c.y-y);if(d<120*f)c.glow=Math.max(c.glow,1.2-d/(120*f))}}
@@ -2731,6 +2731,7 @@
     // cada cuadro: la mano detectada pasa de la imagen de la cámara al espacio 3D, delante de la tarjeta
     pasoMano(st){
       const M=window.HZMano, cam=this.el.sceneEl.camera; if(!this.manoPts||!cam) return;
+      if(window.hzSinGuante){ this.manoPts.visible=false; return; }   // la mano ahora la hace piel.js
       if(window.__hzNubeAct!==this){ this.manoPts.visible=false; return; }
       if(this.anchor.object3D.visible&&this.pts){ this.pts.updateMatrixWorld(); this.mu.uCloudM.value.copy(this.pts.matrixWorld);
         cam.getWorldPosition(this._mc); this._mv.setFromMatrixPosition(this.pts.matrixWorld); this._dCarta=this._mc.distanceTo(this._mv);
@@ -4316,6 +4317,15 @@ sobre la mano en el canvas transparente hz-plancton, sin iframe ni navegación. 
     },500);
   },{once:true});
 })();
+</script>
+<!-- PIEL: lo que está en el trigger entra por las yemas y avanza por la mano real (piel.js).
+     Reemplaza la nube pegada al esqueleto de la mano y el fitoplancton. -->
+<script src="./piel.js"></script>
+<script>
+  window.hzSinGuante=true; if(/debug/.test(location.search)) HZPiel.CFG.debug=true;
+  (function(){ const st=document.createElement('style'); st.textContent='#hz-plancton{display:none!important}'; document.head.appendChild(st);
+    let idx=null; setInterval(()=>{ const n=window.__hzNubeAct, D=window.HZ_DATOS||{}; const i=n&&n._idx;
+      if(i!=null&&i!==idx&&D.miniaturas&&D.miniaturas[i]&&window.HZPiel){ idx=i; HZPiel.imagen(D.miniaturas[i]); } },300); })();
 </script>
 </body>
 </html>
