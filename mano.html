@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>[Hz] · mano</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;font:500 12px Menlo,monospace;color:#fff}
+  #v{position:fixed;object-fit:cover;left:0;top:0;width:100vw;height:100vh}
+  #estado{position:fixed;left:10px;top:10px;z-index:99999;opacity:.7}
+  #go{position:fixed;inset:0;z-index:99998;display:flex;align-items:center;justify-content:center;background:#000;font-size:15px;letter-spacing:.1em}
+  #tr{position:fixed;right:10px;top:8px;z-index:99999;display:flex;gap:6px}
+  #tr button{background:none;color:#fff;border:1px solid #fff5;border-radius:12px;padding:4px 9px;font:inherit}
+  #tr button.on{background:#fff;color:#000}
+</style></head>
+<body>
+<video id="v" playsinline muted autoplay></video>
+<div id="estado">v 16/11 piel</div>
+<div id="tr"></div>
+<div id="go">TOCAR PARA EMPEZAR</div>
+<script src="./hz-datos.js"></script>
+<script>
+  // MediaPipe Hands, igual que en index.html
+  window.HZMano=(function(){
+    const M={lm:null,t:0,src:null,cargando:false,err:null};
+    const CDN=new URLSearchParams(location.search).get('mp')||'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/';
+    M.iniciar=function(){
+      if(M.cargando) return; M.cargando=true;
+      const s=document.createElement('script'); s.src=CDN+'hands.js'; s.crossOrigin='anonymous';
+      s.onload=()=>{ try{ const h=new Hands({locateFile:f=>CDN+f});
+        h.setOptions({maxNumHands:1,modelComplexity:1,minDetectionConfidence:+(new URLSearchParams(location.search).get('det')||0.5),minTrackingConfidence:0.5,selfieMode:false});
+        h.onResults(r=>{ const L=(r.multiHandLandmarks&&r.multiHandLandmarks[0])||null, ahora=performance.now();
+          if(L&&M.lm&&ahora-M.t<200){ const dt=Math.max(16,ahora-M.t); M.vel=L.map((p,i)=>({x:(p.x-M.lm[i].x)/dt,y:(p.y-M.lm[i].y)/dt})); } else M.vel=null;
+          M.lm=L; M.t=ahora; });
+        M.h=h; bucle(); }catch(e){ M.err=String(e); } };
+      s.onerror=()=>{ M.err='no se pudo cargar MediaPipe'; };
+      document.head.appendChild(s);
+    };
+    async function bucle(){
+      for(;;){ const src=document.getElementById('v');
+        if((src.readyState>=2&&src.videoWidth)||(src.tagName==='IMG'&&src.complete&&src.naturalWidth)){ try{ await M.h.send({image:src}); M.src=src; }catch(e){ M.err=String(e); } }
+        await new Promise(r=>requestAnimationFrame(()=>r())); }
+    }
+    return M;
+  })();
+  // el video ocupa la pantalla recortado (cover); piel.js necesita su rectángulo real, así que lo dimensiono a mano
+  function encuadre(){ const v=document.getElementById('v'), vw=v.videoWidth||v.naturalWidth, vh=v.videoHeight||v.naturalHeight; if(!vw) return;
+    const s=Math.max(innerWidth/vw,innerHeight/vh), w=vw*s, h=vh*s;
+    v.style.width=w+'px'; v.style.height=h+'px'; v.style.left=(innerWidth-w)/2+'px'; v.style.top=(innerHeight-h)/2+'px'; v.style.objectFit='fill'; }
+  addEventListener('resize',encuadre);
+</script>
+<script src="./piel.js"></script>
+<script>
+  const Q=new URLSearchParams(location.search); let v=document.getElementById('v');
+  if(Q.get('debug')) HZPiel.CFG.debug=true; if(Q.get('espera')) HZPiel.CFG.espera=+Q.get('espera');
+  // elegir de qué trigger sale la materia (miniaturas de hz-datos.js)
+  const MIN=(window.HZ_DATOS&&HZ_DATOS.miniaturas)||{}; let actual=Q.get('tr')||'4';
+  const barra=document.getElementById('tr');
+  Object.keys(MIN).forEach(k=>{ const b=document.createElement('button'); b.textContent=k; b.onclick=()=>{ actual=k; HZPiel.imagen(MIN[k]); marcar(); }; barra.appendChild(b); });
+  function marcar(){ [...barra.children].forEach(b=>b.className=b.textContent===actual?'on':''); }
+  HZPiel.imagen(MIN[actual]); marcar();
+  async function empezar(){
+    document.getElementById('go').remove();
+    if(Q.get('img')){ const im=document.createElement('img'); im.id='v'; im.style.cssText=v.style.cssText+';position:fixed'; v.replaceWith(im); im.onload=encuadre; im.src=Q.get('img'); HZMano.iniciar(); return; }
+    if(Q.get('video')){ v.src=Q.get('video'); v.loop=true; await v.play(); }
+    else { const s=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}}); v.srcObject=s; await v.play(); }
+    v.onloadedmetadata=encuadre; encuadre(); HZMano.iniciar();
+  }
+  document.getElementById('go').onclick=()=>empezar().catch(e=>{ document.getElementById('estado').textContent='error cámara: '+e.message; });
+  if(Q.get('auto')) empezar();
+  setInterval(()=>{ const M=HZMano, e=M.err?'error':!M.h?'cargando':(M.lm&&performance.now()-M.t<400)?'mano':'buscando';
+    document.getElementById('estado').textContent='v 16/11 piel · '+e+' · avance '+Math.round(HZPiel.avance*80)+'%'; },300);
+</script>
+</body></html>
