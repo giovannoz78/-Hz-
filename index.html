@@ -2328,9 +2328,9 @@
   })();
   addEventListener('DOMContentLoaded',()=>{ let v=document.getElementById('hz-version'); if(!v){ v=document.createElement('div'); v.id='hz-version'; }
     v.style.cssText='position:fixed;left:8px;top:8px;z-index:99999;font:500 10px Menlo,monospace;color:#fff;opacity:.6;pointer-events:none';
-    v.textContent='v 16/11d plancton'; document.body.appendChild(v);
+    v.textContent='v 16/11e contagio'; document.body.appendChild(v);
     setInterval(()=>{ const M=window.HZMano; const e=M.err?'error':!M.cargando?'espera':!M.h?'cargando':(M.lm&&performance.now()-M.t<400)?'detectada':'buscando';
-      v.textContent='v 16/11d plancton · mano: '+e; },500); });
+      v.textContent='v 16/11e contagio · '+(window.HZPiel&&HZPiel.est?('tapa '+Math.round(HZPiel.est.tapado*100)+'% · avance '+Math.round(HZPiel.avance/1.6*100)+'%'):''); },500); });
   </script>
   <!-- FITOPLANCTON SOBRE LA MANO: cuando MediaPipe ve la mano, el fitoplancton abisal la coloniza.
        Las células (diatomeas, dinoflagelados, cocolitofóridos, cadenas) nacen en las yemas y avanzan hacia la muñeca,
@@ -4318,14 +4318,13 @@ sobre la mano en el canvas transparente hz-plancton, sin iframe ni navegación. 
   },{once:true});
 })();
 </script>
-<!-- PIEL: lo que está en el trigger entra por las yemas y avanza por la mano real (piel.js).
-     Reemplaza la nube pegada al esqueleto de la mano y el fitoplancton. -->
+<!-- CONTAGIO: el fitoplancton sale del glaciar e invade lo que lo tapa (piel.js). No usa MediaPipe:
+     compara la cámara con la imagen del trigger que MindAR está siguiendo. Reemplaza el guante y el fitoplancton anterior. -->
 <script src="./piel.js"></script>
 <script>
   window.hzSinGuante=true; if(/debug/.test(location.search)) HZPiel.CFG.debug=true;
-  (function(){ const st=document.createElement('style'); st.textContent='#hz-plancton{display:none!important}'; document.head.appendChild(st);
-    let idx=null; setInterval(()=>{ const n=window.__hzNubeAct, D=window.HZ_DATOS||{}; const i=n&&n._idx;
-      if(i!=null&&i!==idx&&D.miniaturas&&D.miniaturas[i]&&window.HZPiel){ idx=i; HZPiel.imagen(D.miniaturas[i]); } },300); })();
+  if(window.HZMano) HZMano.iniciar=function(){};   // MediaPipe ya no hace falta: libera el teléfono para MindAR
+  (function(){ const st=document.createElement('style'); st.textContent='#hz-plancton{display:none!important}'; document.head.appendChild(st); })();
 </script>
 </body>
 </html>
