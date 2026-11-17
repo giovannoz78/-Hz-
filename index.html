@@ -2328,9 +2328,9 @@
   })();
   addEventListener('DOMContentLoaded',()=>{ let v=document.getElementById('hz-version'); if(!v){ v=document.createElement('div'); v.id='hz-version'; }
     v.style.cssText='position:fixed;left:8px;top:8px;z-index:99999;font:500 10px Menlo,monospace;color:#fff;opacity:.6;pointer-events:none';
-    v.textContent='v 16/11e contagio'; document.body.appendChild(v);
+    v.textContent='v 16/11d plancton'; document.body.appendChild(v);
     setInterval(()=>{ const M=window.HZMano; const e=M.err?'error':!M.cargando?'espera':!M.h?'cargando':(M.lm&&performance.now()-M.t<400)?'detectada':'buscando';
-      v.textContent='v 16/11e contagio · '+(window.HZPiel&&HZPiel.est?('tapa '+Math.round(HZPiel.est.tapado*100)+'% · avance '+Math.round(HZPiel.avance/1.6*100)+'%'):''); },500); });
+      v.textContent='v 16/11d plancton · mano: '+e; },500); });
   </script>
   <!-- FITOPLANCTON SOBRE LA MANO: cuando MediaPipe ve la mano, el fitoplancton abisal la coloniza.
        Las células (diatomeas, dinoflagelados, cocolitofóridos, cadenas) nacen en las yemas y avanzan hacia la muñeca,
@@ -2361,13 +2361,13 @@
     dedos.forEach((f,i)=>f.forEach(([a,b],j)=>tramos.push({k:'d',a,b,w:pesoD[i]*parte[j],j,pul:i===0})));
     const cdf=[];{let acc=0;tramos.forEach(t=>{acc+=t.w;cdf.push(acc)});cdf.tot=acc;}
     function lugar(c){ const x=Math.random()*cdf.tot; let k=0; while(cdf[k]<x) k++; const t=tramos[k]; c.k=k;
-      if(t.k==='p'){ c.u=Math.random(); c.v=Math.random(); c.g=Math.min(1,Math.max(0,(1-c.v/2)*0.9+0.05+rnd(-0.04,0.04))); }
-      else { c.u=Math.random(); c.v=rnd(-0.85,0.85); const al=(t.j+c.u)/3, cy=t.pul?0.3+al*1.5:1+al; c.g=Math.min(1,Math.max(0,(1-cy/2)*0.9+0.05+rnd(-0.04,0.04))); } }
+      if(t.k==='p'){ c.u=Math.random(); c.v=Math.random(); c.g=Math.min(1,Math.max(0,1-c.v*.45+rnd(-0.04,0.04))); }
+      else { c.u=Math.random(); c.v=rnd(-0.85,0.85); const al=(t.j+c.u)/3; c.g=Math.min(1,Math.max(0,(1-al)*.55+rnd(-0.04,0.04))); } }
     function mkCell(){
       const t=TIPOS[Math.random()*TIPOS.length|0], depth=Math.random();
       const c={t,x:0,y:0,z:depth, s:(t==='cadena'?rnd(2.5,4):rnd(1.6,4.2))*(0.45+depth*0.9),
         rot:rnd(0,Math.PI*2),vr:rnd(-.01,.01),ph:rnd(0,1e3),glow:0,
-        hue:t==='dino'?rnd(178,196):t==='coco'?rnd(160,176):rnd(166,188), n:t==='cadena'?(rnd(3,7)|0):t==='diatomea_c'?(rnd(8,14)|0):0};
+        hue:t==='dino'?rnd(160,185):t==='coco'?rnd(55,90):rnd(70,120), n:t==='cadena'?(rnd(3,7)|0):t==='diatomea_c'?(rnd(8,14)|0):0};
       c.t0=c.t;c.n0=c.n;c.m=1;c.hT=c.hue;c.vis=0;c.via=-1;c.frio=0; lugar(c); return c; }
     function infectar(c,o){c.t0=c.t;c.n0=c.n;c.t=o.t;c.n=o.n;c.hT=o.hT;c.m=0;c.glow=Math.max(c.glow,.35)}
     function contagiar(k){
@@ -2428,10 +2428,10 @@
     const Lp=[]; for(let i=0;i<21;i++) Lp.push({x:0,y:0,vx:0,vy:0}); let visto=false;
     function leerMano(){
       const M=window.HZMano; if(!M||!M.lm||!M.src||performance.now()-M.t>400) return false;
-      const sr=M.src.getBoundingClientRect(), adel=Math.min(90,performance.now()-M.t+40);
+      const sr=M.src.getBoundingClientRect(), adel=Math.min(80,performance.now()-M.t+30);
       for(let i=0;i<21;i++){ const l=M.lm[i], v=M.vel&&M.vel[i];
         const x=sr.left+(l.x+(v?v.x*adel:0))*sr.width, y=sr.top+(l.y+(v?v.y*adel:0))*sr.height, q=Lp[i];
-        if(!visto){ q.x=x; q.y=y; q.vx=q.vy=0; } else { const nx=q.x+(x-q.x)*0.6, ny=q.y+(y-q.y)*0.6; q.vx=nx-q.x; q.vy=ny-q.y; q.x=nx; q.y=ny; } }
+        if(!visto){ q.x=x; q.y=y; q.vx=q.vy=0; } else { const nx=q.x+(x-q.x)*0.7, ny=q.y+(y-q.y)*0.7; q.vx=nx-q.x; q.vy=ny-q.y; q.x=nx; q.y=ny; } }
       if(!visto){ visto=true; [4,8,12,16,20].forEach(i=>poke(Lp[i].x,Lp[i].y,.35)); }
       return true;
     }
@@ -2460,6 +2460,7 @@
       const ahora=performance.now(), st=Math.min(0.05,(ahora-ultT)/1000); ultT=ahora;
       const hay=leerMano();
       if(hay) ultimo=ahora;
+      else visto=false;
       col=Math.max(0,Math.min(1,col+(hay?st/CFG.coloniza:-st/CFG.suelta)));
       if(typeof window.hzPlanctonForzar==='number') col=window.hzPlanctonForzar;
       if(col<=0&&!hay){ if(frame.ui){ frame.ui=false; document.querySelectorAll('.mindar-ui-scanning').forEach(e=>{ e.style.visibility=''; }); }
@@ -4318,13 +4319,18 @@ sobre la mano en el canvas transparente hz-plancton, sin iframe ni navegación. 
   },{once:true});
 })();
 </script>
-<!-- CONTAGIO: el fitoplancton sale del glaciar e invade lo que lo tapa (piel.js). No usa MediaPipe:
-     compara la cámara con la imagen del trigger que MindAR está siguiendo. Reemplaza el guante y el fitoplancton anterior. -->
-<script src="./piel.js"></script>
+<!-- PIEL: lo que está en el trigger entra por las yemas y avanza por la mano real (piel.js).
+     Reemplaza la nube pegada al esqueleto de la mano y el fitoplancton. -->
+<script src="./piel.js?v=plancton-mano"></script>
 <script>
-  window.hzSinGuante=true; if(/debug/.test(location.search)) HZPiel.CFG.debug=true;
-  if(window.HZMano) HZMano.iniciar=function(){};   // MediaPipe ya no hace falta: libera el teléfono para MindAR
-  (function(){ const st=document.createElement('style'); st.textContent='#hz-plancton{display:none!important}'; document.head.appendChild(st); })();
+  window.hzSinGuante=true;
+  if (window.HZPiel && HZPiel.listo) {
+    HZPiel.CFG.plancton=true;
+    if (/debug/.test(location.search)) HZPiel.CFG.debug=true;
+  }
+  (function(){ const st=document.createElement('style'); st.textContent=window.HZPiel?.listo ? '#hz-plancton{visibility:hidden!important}' : ''; document.head.appendChild(st);
+    let idx=null; setInterval(()=>{ const n=window.__hzNubeAct, D=window.HZ_DATOS||{}; const i=n&&n._idx;
+      if(i!=null&&i!==idx&&D.miniaturas&&D.miniaturas[i]&&window.HZPiel){ idx=i; HZPiel.imagen(D.miniaturas[i]); } },300); })();
 </script>
 </body>
 </html>
