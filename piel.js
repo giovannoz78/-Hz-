@@ -1,186 +1,217 @@
-// [Hz] · CONTAGIO — el fitoplancton invade solo lo que tapa el glaciar: los dedos, la mano.
-// La obra aprende cómo se ve el glaciar EN ESTA CÁMARA (esta pantalla o este papel, esta luz) apenas MindAR lo encuentra,
-// y desde ahí compara cada cuadro contra ese aprendizaje, en las coordenadas de la propia tarjeta.
-// Lo que difiere es lo que está delante: ahí, y solo ahí, aparece el plancton.
-// El aprendizaje se actualiza solo donde no hay nada delante, así se adapta a cambios de luz sin "tragarse" la mano.
+// [Hz] · PIEL — lo que está en el trigger entra por las yemas y avanza por la mano real.
+// La mano no se dibuja: se recorta de la cámara, cuadro a cuadro, por el color de la piel
+// (muestreado en la propia mano, dentro de la zona que marca MediaPipe). Así la materia queda
+// adentro del contorno verdadero, entre los dedos, y la piel se sigue viendo debajo.
+// Necesita window.HZMano (MediaPipe Hands) y una imagen: HZPiel.imagen(url).
 window.HZPiel = window.HZPiel || (function () {
-  const CFG = { umbral: 0.16, aprende: 0.06, debug: false };
+  const CFG = { modo: 'plancton', plancton: false, avance: 5, suelta: 1.2, olvida: 6, espera: 400, debug: false };
   const cv = document.createElement('canvas'); cv.id = 'hz-piel';
   cv.style.cssText = 'position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:99991';
   const gl = cv.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: false });
-  const VS = 'attribute vec2 p;varying vec2 vu;void main(){vu=p*.5+.5;gl_Position=vec4(p,0.,1.);}';
-  const COMUN = `precision highp float; varying vec2 vu;
-  vec3 ycc(vec3 c){float y=dot(c,vec3(.299,.587,.114));return vec3(y,(c.b-y)*.564,(c.r-y)*.713);}`;
-  // 1) la tarjeta "enderezada": cada texel toma de la cámara el punto de la tarjeta que le corresponde
-  const FS_RECT = COMUN + `uniform sampler2D uV; uniform mat3 uHuv; uniform vec4 uVid;
-  void main(){ vec2 uv=vec2(vu.x,1.-vu.y); vec3 h=uHuv*vec3(uv,1.); vec2 s=h.xy/h.z; vec2 t=(s-uVid.xy)/uVid.zw;
-    gl_FragColor=vec4(texture2D(uV,t).rgb,1.); }`;
-  // 2) qué tapa la tarjeta: diferencia con lo aprendido, tolerando que MindAR tiemble un par de texels
-  const FS_OCC = COMUN + `uniform sampler2D uCur; uniform sampler2D uRef; uniform vec2 uTx; uniform float uUmbral; uniform sampler2D uOccPrev;
-  float dif(vec3 c,vec3 r){ vec3 a=ycc(c), b=ycc(r); return max(0.,b.x-a.x)*1.6+abs(a.x-b.x)*.6+length(a.yz-b.yz)*2.5; }
-  void main(){
-    vec3 c=(texture2D(uCur,vu).rgb*4.+texture2D(uCur,vu+vec2(uTx.x,0)).rgb+texture2D(uCur,vu-vec2(uTx.x,0)).rgb+texture2D(uCur,vu+vec2(0,uTx.y)).rgb+texture2D(uCur,vu-vec2(0,uTx.y)).rgb)/8.;
-    float d=1e3;
-    for(int j=-1;j<=1;j++) for(int i=-1;i<=1;i++){ vec2 o=vec2(float(i),float(j))*uTx*1.5; d=min(d,dif(c,texture2D(uRef,vu+o).rgb)); }
-    float o=smoothstep(uUmbral,uUmbral+.1,d);
-    float prev=texture2D(uOccPrev,vu).r;
-    gl_FragColor=vec4(mix(prev,o,.55),0.,0.,1.); }`;
-  // 3) aprender: donde no hay nada delante, el glaciar aprendido se acerca a lo que se ve ahora
-  const FS_APR = COMUN + `uniform sampler2D uCur; uniform sampler2D uRef; uniform sampler2D uOcc; uniform float uRate; uniform float uInicio;
-  void main(){ vec3 c=texture2D(uCur,vu).rgb, r=texture2D(uRef,vu).rgb; float o=texture2D(uOcc,vu).r;
-    float k=uInicio>.5?1.:uRate*(1.-smoothstep(.2,.5,o))+.002;
-    gl_FragColor=vec4(mix(r,c,k),1.); }`;
-  // 4) en pantalla: el plancton sobre lo que tapa
-  const FS_VER = COMUN + `uniform vec2 uRes; uniform float uDpr; uniform mat3 uHi; uniform float uAsp; uniform sampler2D uOcc; uniform vec2 uTx;
-  uniform float uT; uniform float uA; uniform float uF; uniform float uDebug;
+  const VS = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+  const PARES=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[0,17],[17,18],[18,19],[19,20],[0,9],[0,13],[1,5]];
+  const SEGS=PARES.map(([a,b])=>`seg(p,uL[${a}],uL[${b}],uD[${a}],uD[${b}],dmin,tt);`).join('')+[0,1,2,3,4].map(k=>`seg(p,uL[${4+k*4}],uE[${k}],0.,-.2,dmin,tt);`).join('');
+  const FS = `precision highp float;
+  uniform vec2 uRes; uniform float uDpr; uniform vec4 uVid; uniform sampler2D uV; uniform sampler2D uImg;
+  uniform vec2 uL[21]; uniform vec2 uE[5]; uniform float uD[21]; uniform vec3 uRef; uniform float uSig; uniform float uConf;
+  uniform float uF; uniform float uT; uniform float uA; uniform float uDebug; uniform float uImgOk; uniform sampler2D uPl; uniform float uPlOk;
   vec2 hash(vec2 p){p=vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3)));return -1.+2.*fract(sin(p)*43758.5453);}
   float noise(vec2 p){vec2 i=floor(p),f=fract(p),u=f*f*(3.-2.*f);
     return mix(mix(dot(hash(i),f),dot(hash(i+vec2(1,0)),f-vec2(1,0)),u.x),mix(dot(hash(i+vec2(0,1)),f-vec2(0,1)),dot(hash(i+vec2(1,1)),f-vec2(1,1)),u.x),u.y);}
   float fbm(vec2 p){float a=.5,s=0.;for(int i=0;i<5;i++){s+=a*noise(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return s;}
-%%CELULA%%
-  float occ(vec2 uv){ vec2 t=vec2(uv.x,1.-uv.y); return (texture2D(uOcc,t).r*2.+texture2D(uOcc,t+vec2(uTx.x,0)).r+texture2D(uOcc,t-vec2(uTx.x,0)).r+texture2D(uOcc,t+vec2(0,uTx.y)).r+texture2D(uOcc,t-vec2(0,uTx.y)).r)/6.; }
+  mat2 rot(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);}
+  float anillo(float d,float r,float w){return 1.-smoothstep(0.,w,abs(d-r));}
+  // una célula de fitoplancton en q (radio ~1). tipo 0 diatomea céntrica, 1 pennada, 2 cadena, 3 dinoflagelado, 4 cocolitofórido
+  float celula(vec2 q,float tipo,float t){
+    float d=length(q), a=atan(q.y,q.x), v=0.;
+    if(tipo<.5){ v=anillo(d,.8,.07)+anillo(d,.45,.05)*.6; v+=(1.-smoothstep(.75,.8,d))*smoothstep(.12,.0,abs(sin(a*9.)))*.55*step(.45,d); v+=(1.-smoothstep(.0,.18,d))*.8; }
+    else if(tipo<1.5){ vec2 e=q*vec2(.45,1.3); float de=length(e); v=anillo(de,.42,.035); v+=(1.-smoothstep(.38,.42,de))*smoothstep(.25,.0,abs(sin(q.x*14.)))*.5; v+=(1.-smoothstep(.0,.06,abs(q.y)))*(1.-smoothstep(.3,.4,de))*.6; }
+    else if(tipo<2.5){ for(int i=-2;i<=2;i++){ vec2 c=q-vec2(float(i)*.42,0.); float dc=length(c); v+=anillo(dc,.18,.04)+(1.-smoothstep(.0,.08,dc))*.7; } v+=(1.-smoothstep(.0,.02,abs(q.y)))*step(abs(q.x),.95)*.4; }
+    else if(tipo<3.5){ vec2 e=q*vec2(1.,.8); float de=length(e); v=anillo(de,.6,.05); v+=(1.-smoothstep(.0,.035,abs(q.y-.08*sin(q.x*6.))))*(1.-smoothstep(.5,.62,de))*.8;
+      vec2 f=q-vec2(.55,-.3); v+=(1.-smoothstep(.0,.025,abs(f.y+.15*sin(f.x*10.-t*6.))))*step(0.,f.x)*step(f.x,.6)*.6; v+=(1.-smoothstep(.55,.62,de))*.18; }
+    else { v=anillo(d,.55,.05); for(int i=0;i<7;i++){ float b=float(i)*.8976; vec2 c=q-.55*vec2(cos(b),sin(b)); v+=anillo(length(c),.18,.035); } v+=(1.-smoothstep(.0,.2,d))*.4; }
+    return clamp(v,0.,1.);
+  }
+  vec3 ycc(vec3 c){float y=dot(c,vec3(.299,.587,.114));return vec3(y,(c.b-y)*.564,(c.r-y)*.713);}
+  vec3 vid(vec2 px){vec2 uv=(px-uVid.xy)/uVid.zw; return texture2D(uV,uv).rgb;}
+  void seg(vec2 p,vec2 A,vec2 B,float da,float db,inout float dmin,inout float tt){
+    vec2 ab=B-A; float h=clamp(dot(p-A,ab)/max(dot(ab,ab),1.),0.,1.); float d=length(p-A-ab*h);
+    if(d<dmin){dmin=d;tt=mix(da,db,h);} }
   void main(){
     vec2 p=vec2(gl_FragCoord.x,uRes.y-gl_FragCoord.y)/uDpr;
-    vec3 h=uHi*vec3(p,1.); vec2 uv=h.xy/h.z;
-    if(h.z<=0.||uv.x<0.||uv.y<0.||uv.x>1.||uv.y>1.){ gl_FragColor=vec4(0.); return; }
-    float m=smoothstep(.35,.7,occ(uv));                 // lo que está delante del glaciar
-    if(uDebug>.5){ gl_FragColor=vec4(vec3(1.,.15,.6)*m*.7,m*.6); return; }
-    if(m<=0.){ gl_FragColor=vec4(0.); return; }
-    vec2 hp=vec2(uv.x,uv.y*uAsp);
-    float n=fbm(hp*6.+vec2(0.,uT*.05));
-    float fr=uF+.25*n-.1, inv=smoothstep(0.,.1,fr);
-    vec2 w=vec2(fbm(hp*4.+uT*.05),fbm(hp*4.+vec2(5.2,1.3)-uT*.04));
-    float ve=pow(clamp(1.-abs(fbm(hp*11.+w*1.5+vec2(0.,uT*.02))),0.,1.),9.);
-    vec2 cel=hp*120.; vec2 id=floor(cel); float dd=length(fract(cel)-.5-hash(id)*.3);
+    float palm=max(length(uL[9]-uL[0]),20.);
+    float dmin=1e5,tt=1.;
+    ${SEGS}
+    // zona posible de la mano: tubos alrededor del esqueleto, generosos
+    float r=palm*.30; float zona=1.-smoothstep(r*1.2,r*2.1,dmin);
+    if(uDebug>.5&&dmin<1.6){ gl_FragColor=vec4(1.,.9,0.,1.); return; }
+    if(zona<=0.){ gl_FragColor=vec4(0.); return; }
+    // piel: parecido de color con la piel muestreada en la mano (5 muestras para suavizar el borde)
+    float sk=0.;
+    for(int i=0;i<5;i++){ vec2 o=i==0?vec2(0):i==1?vec2(1.5,0):i==2?vec2(-1.5,0):i==3?vec2(0,1.5):vec2(0,-1.5);
+      vec3 q=ycc(vid(p+o)); vec2 dc=q.yz-uRef.yz; float yl=smoothstep(.05,.16,q.x)*(1.-smoothstep(.97,1.,q.x));
+      sk+=exp(-dot(dc,dc)/(2.*uSig*uSig))*yl; }
+    sk=clamp(sk/5.*1.35,0.,1.);
+    sk=mix(1.-smoothstep(r*.45,r*.95,dmin),sk,uConf);   // si la muestra de piel no es confiable, cae al tubo
+    float m=zona*smoothstep(.25,.7,sk);
+    // La textura ya contiene el avance de las células desde las yemas.
+    if (uPlOk > .5 && uImgOk < 1.5) {
+      vec4 pl = texture2D(uPl, p / (uRes / uDpr));
+      vec4 outColor = vec4(min(pl.rgb * 1.35, vec3(pl.a)), pl.a) * (m * uA);
+      if (uDebug > .5) { outColor.rgb = mix(outColor.rgb, vec3(1.,.15,.6)*m*.6,.6); outColor.a = max(outColor.a,m*.4); }
+      gl_FragColor = outColor;
+      return;
+    }
+    // coordenadas propias de la mano: siguen su posición, giro y tamaño
+    vec2 ax=normalize(uL[9]-uL[0]+vec2(1e-3)); vec2 hp=vec2(dot(p-uL[0],vec2(ax.y,-ax.x)),dot(p-uL[0],ax))/palm;
+    float n=fbm(hp*2.6+vec2(0.,uT*.03));
+    float fr=uF-tt+.3*n;                      // >0 donde ya entró
+    float inv=smoothstep(0.,.07,fr);
+    vec2 w=vec2(fbm(hp*1.7+uT*.05),fbm(hp*1.7+vec2(5.2,1.3)-uT*.04));
+    // vetas de bioluminiscencia que se adelantan al frente
+    float ve=1.-abs(fbm(hp*4.2+w*1.5+vec2(0.,uT*.02)));
+    ve=pow(clamp(ve,0.,1.),9.);
+    // polvo de plancton: miles de puntitos pegados a la piel que titilan
+    vec2 cel=hp*70.; vec2 id=floor(cel); vec2 jit=hash(id)*.3; float dd=length(fract(cel)-.5-jit);
     float vive=.5+.5*sin(uT*(1.5+hash(id+3.).x)+hash(id).y*6.28);
     float polvo=(1.-smoothstep(.06,.16,dd))*(.35+.65*vive);
+    float hondo=smoothstep(.0,.5,fr);
+    // FITOPLANCTON: una grilla de células en la piel; cada una con tipo, giro, tamaño y deriva propios
     float pk=0., pkCol=0.;
     for(int capa=0;capa<2;capa++){
-      float esc=capa==0?11.:19.;
-      vec2 g=hp*esc+vec2(float(capa)*3.7,uT*.12*(1.+float(capa)));
+      float esc=capa==0?5.:9.;
+      vec2 g=hp*esc+vec2(float(capa)*3.7,uT*.04*(1.+float(capa)));
       vec2 idc=floor(g); vec2 hh=hash(idc+float(capa)*17.); vec2 hh2=hash(idc*1.7+5.3);
-      float hay=step(capa==0?-.2:.2,hh2.x);
+      float hay=step(capa==0?-.15:.25,hh2.x);
       vec2 cen=idc+.5+hh*.22+.06*vec2(sin(uT*.6+hh.x*6.),cos(uT*.5+hh.y*6.));
-      vec2 q=(g-cen); float tam=capa==0?.42+.1*hh2.y:.32+.08*hh2.y;
-      q=rot(hh.x*6.28+uT*.2*hh.y)*q/tam;
+      vec2 q=(g-cen); float tam=capa==0?.40+.12*hh2.y:.30+.08*hh2.y;
+      q=rot(hh.x*6.28+uT*.15*hh.y)*q/tam;
       float tipo=floor((hh2.y*.5+.5)*4.999);
       float c=celula(q,tipo,uT)*hay*step(length(q),1.2);
-      float aparece=smoothstep(-.05,.12,fr-.12*hh.y);
+      float aparece=smoothstep(-.05,.12,fr-.15*hh.y);         // cada célula se enciende cuando le llega el frente
       float pulso=.65+.35*sin(uT*(1.2+hh.y)+hh.x*9.);
       pk=max(pk,c*aparece*pulso); pkCol+=tipo*c;
     }
-    vec3 teal=vec3(.12,.85,.78);
+    vec3 teal=vec3(.12,.85,.78), cian=vec3(.55,.97,1.);
+    // las células del fitoplancton (dibujadas por HZPlancton) recortadas por la piel real
+    vec3 pl=uPlOk>.5?texture2D(uPl,vec2(p.x,p.y)/(uRes/uDpr)).rgb:vec3(0.);
+    float velo=.05+.10*hondo;                        // velo tenue que tiñe toda la piel invadida
     vec3 tono=mix(vec3(.25,1.,.85),vec3(.6,.9,1.),fract(pkCol*.37));
-    float velo=.08+.12*smoothstep(0.,.5,fr);
-    vec3 col=teal*(velo+polvo*.45+ve*.45)*inv + tono*pk*1.3;
-    float al=clamp((velo*.7+polvo*.2)*inv+pk*.8,0.,1.);
-    gl_FragColor=vec4(col*m*uA,al*m*uA);
+    vec3 col=(pl*1.7 + teal*(velo+polvo*.45+ve*.45)) * inv + tono*pk*1.25;
+    float delante=ve*smoothstep(-.22,0.,fr)*(1.-inv);
+    float borde=exp(-pow(fr/.03,2.));
+    col+=cian*(delante*.8+borde*.85);
+    float al=clamp((dot(pl,vec3(.33))*.5+velo*.6+polvo*.2)*inv+pk*.75+delante*.4+borde*.35,0.,1.);
+    if(uImgOk>1.5){   // modo 'imagen' (solo si se pide): la textura del trigger en lugar del plancton   // sin plancton: la imagen del trigger (modo anterior)
+      vec2 iu=vec2(.5+hp.x*.42,.15+hp.y*.42)+w*.12+vec2(0.,-uT*.018);
+      vec3 img=texture2D(uImg,fract(iu)).rgb; float lum=dot(img,vec3(.3,.55,.15));
+      col=img*(.85+.9*lum)*inv*smoothstep(.03,.22,lum)+cian*(delante*.95+borde*.9); al=clamp(inv*.9*smoothstep(.03,.22,lum)+delante*.55+borde*.45,0.,1.); }
+    col*=m*uA; al*=m*uA;
+    if(uDebug>.5){ col=mix(col,vec3(1.,.15,.6)*m*.6,.6); al=max(al,m*.4); }
+    gl_FragColor=vec4(col,al);
   }`;
-  const RW = 128; let RH = 96;
-  let ok = false, P = {}, tV, tCur, tOcc = [], tRef = [], fCur, fOcc = [], fRef = [], io = 0, ir = 0, buf;
   function sh(t, s) { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o);
     if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; }
-  function prog(fs, names) { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
-    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
-    const u = {}; names.forEach(n => u[n] = gl.getUniformLocation(p, n)); return { p, u, a: gl.getAttribLocation(p, 'p') }; }
-  const tex = (w, h) => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    if (w) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); return t; };
-  const fbo = t => { const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); return f; };
-  function armarBuffers(h) { RH = h; tCur = tex(RW, RH); fCur = fbo(tCur);
-    tOcc = [tex(RW, RH), tex(RW, RH)]; fOcc = tOcc.map(fbo); tRef = [tex(RW, RH), tex(RW, RH)]; fRef = tRef.map(fbo);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null); }
+  let pr, U = {}, tV, tI, tP, imgOk = 0, ok = false;
   try {
-    const CEL = "  mat2 rot(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);}\n  float anillo(float d,float r,float w){return 1.-smoothstep(0.,w,abs(d-r));}\n  // una c\u00e9lula de fitoplancton en q (radio ~1). tipo 0 diatomea c\u00e9ntrica, 1 pennada, 2 cadena, 3 dinoflagelado, 4 cocolitof\u00f3rido\n  float celula(vec2 q,float tipo,float t){\n    float d=length(q), a=atan(q.y,q.x), v=0.;\n    if(tipo<.5){ v=anillo(d,.8,.07)+anillo(d,.45,.05)*.6; v+=(1.-smoothstep(.75,.8,d))*smoothstep(.12,.0,abs(sin(a*9.)))*.55*step(.45,d); v+=(1.-smoothstep(.0,.18,d))*.8; }\n    else if(tipo<1.5){ vec2 e=q*vec2(.45,1.3); float de=length(e); v=anillo(de,.42,.035); v+=(1.-smoothstep(.38,.42,de))*smoothstep(.25,.0,abs(sin(q.x*14.)))*.5; v+=(1.-smoothstep(.0,.06,abs(q.y)))*(1.-smoothstep(.3,.4,de))*.6; }\n    else if(tipo<2.5){ for(int i=-2;i<=2;i++){ vec2 c=q-vec2(float(i)*.42,0.); float dc=length(c); v+=anillo(dc,.18,.04)+(1.-smoothstep(.0,.08,dc))*.7; } v+=(1.-smoothstep(.0,.02,abs(q.y)))*step(abs(q.x),.95)*.4; }\n    else if(tipo<3.5){ vec2 e=q*vec2(1.,.8); float de=length(e); v=anillo(de,.6,.05); v+=(1.-smoothstep(.0,.035,abs(q.y-.08*sin(q.x*6.))))*(1.-smoothstep(.5,.62,de))*.8;\n      vec2 f=q-vec2(.55,-.3); v+=(1.-smoothstep(.0,.025,abs(f.y+.15*sin(f.x*10.-t*6.))))*step(0.,f.x)*step(f.x,.6)*.6; v+=(1.-smoothstep(.55,.62,de))*.18; }\n    else { v=anillo(d,.55,.05); for(int i=0;i<7;i++){ float b=float(i)*.8976; vec2 c=q-.55*vec2(cos(b),sin(b)); v+=anillo(length(c),.18,.035); } v+=(1.-smoothstep(.0,.2,d))*.4; }\n    return clamp(v,0.,1.);\n  }\n";
-    P.rect = prog(FS_RECT, ['uV', 'uHuv', 'uVid']);
-    P.occ = prog(FS_OCC, ['uCur', 'uRef', 'uTx', 'uUmbral', 'uOccPrev']);
-    P.apr = prog(FS_APR, ['uCur', 'uRef', 'uOcc', 'uRate', 'uInicio']);
-    P.ver = prog(FS_VER.replace('%%CELULA%%', CEL), ['uRes', 'uDpr', 'uHi', 'uAsp', 'uOcc', 'uTx', 'uT', 'uA', 'uF', 'uDebug']);
-    buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
-    tV = tex(); armarBuffers(96); ok = true;
-  } catch (e) { console.warn('[Hz] contagio', e); }
-  function usar(pp) { gl.useProgram(pp.p); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.enableVertexAttribArray(pp.a); gl.vertexAttribPointer(pp.a, 2, gl.FLOAT, false, 0, 0); }
-  function textura(unit, t, loc) { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t); gl.uniform1i(loc, unit); }
-  const m3 = H => [H[0], H[3], H[6], H[1], H[4], H[7], H[2], H[5], H[8]];   // por filas -> por columnas (GLSL)
+    pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(pr);
+    if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+    gl.useProgram(pr);
+    const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(pr, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    ['uRes','uDpr','uVid','uV','uImg','uPl','uPlOk','uE','uL','uD','uRef','uSig','uConf','uF','uT','uA','uDebug','uImgOk'].forEach(k => U[k] = gl.getUniformLocation(pr, k));
+    const tex = () => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); return t; };
+    gl.activeTexture(gl.TEXTURE0); tV = tex();
+    gl.activeTexture(gl.TEXTURE1); tI = tex();
+    gl.activeTexture(gl.TEXTURE2); tP = tex(); gl.uniform1i(U.uV, 0); gl.uniform1i(U.uImg, 1); gl.uniform1i(U.uPl, 2);
+    // profundidad desde la yema (0) hasta la muñeca (1)
+    const D = [1, .45,.3,.15,0, .45,.3,.15,0, .45,.3,.15,0, .45,.3,.15,0, .45,.3,.15,0];
+    gl.uniform1fv(U.uD, D);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    ok = true;
+  } catch (e) { console.warn('[Hz] piel', e); }
 
-  function homografia(s, d) {
-    const A = [], B = [];
-    for (let i = 0; i < 4; i++) { const [x, y] = s[i], [u, v] = d[i];
-      A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); B.push(u); A.push([0, 0, 0, x, y, 1, -v * x, -v * y]); B.push(v); }
-    for (let c = 0; c < 8; c++) { let m = c; for (let r = c + 1; r < 8; r++) if (Math.abs(A[r][c]) > Math.abs(A[m][c])) m = r;
-      [A[c], A[m]] = [A[m], A[c]]; [B[c], B[m]] = [B[m], B[c]];
-      for (let r = 0; r < 8; r++) if (r !== c) { const f = A[r][c] / A[c][c]; for (let k = c; k < 8; k++) A[r][k] -= f * A[c][k]; B[r] -= f * B[c]; } }
-    const h = B.map((b, i) => b / A[i][i]); return [h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1];
+  // la imagen del trigger (potencia de 2 para poder repetirla)
+  function imagen(src) {
+    if (!src || !ok) return; const im = new Image(); im.crossOrigin = 'anonymous';
+    im.onload = () => { const c = document.createElement('canvas'); c.width = c.height = 512; c.getContext('2d').drawImage(im, 0, 0, 512, 512);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tI); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); imgOk = 1; };
+    im.src = src;
   }
-  let V3 = null, asp = .75, idxAct = null;
-  function tarjeta() {
-    const sc = document.querySelector('a-scene'), cam = sc && sc.camera, T = window.AFRAME && AFRAME.THREE; if (!cam || !T || !sc.renderer) return null;
-    if (!V3) V3 = new T.Vector3();
-    const cr = sc.renderer.domElement.getBoundingClientRect();
-    for (const an of document.querySelectorAll('.hz-ancla')) { const o = an.object3D; if (!o || !o.visible) continue;
-      const mm = (an.id || '').match(/(\d+)$/), i = mm ? mm[1] : null, D = window.HZ_DATOS || {};
-      const a = (D.aspectos && D.aspectos[i]) || .75;
-      const Pt = [[-.5, a / 2], [.5, a / 2], [.5, -a / 2], [-.5, -a / 2]].map(([x, y]) => {
-        V3.set(x, y, 0).applyMatrix4(o.matrixWorld).project(cam); return [cr.left + (V3.x * .5 + .5) * cr.width, cr.top + (-V3.y * .5 + .5) * cr.height]; });
-      if (Pt.some(q => !isFinite(q[0]))) continue;
-      return { P: Pt, idx: i, asp: a };
-    }
-    return null;
+  // muestra de piel: color en puntos de la palma y de las falanges medias, leído del mismo cuadro
+  const mc = document.createElement('canvas'); mc.width = 96; mc.height = 96; const mx = mc.getContext('2d', { willReadFrequently: true });
+  const ref = { y: .5, cb: -.05, cr: .08, sig: .05, conf: 0 };
+  function muestrear(src, lmN) {
+    const vw = src.videoWidth || src.naturalWidth, vh = src.videoHeight || src.naturalHeight; if (!vw) return;
+    mx.drawImage(src, 0, 0, 96, 96); const d = mx.getImageData(0, 0, 96, 96).data;
+    const pts = []; const mid = (a, b, k) => ({ x: lmN[a].x + (lmN[b].x - lmN[a].x) * k, y: lmN[a].y + (lmN[b].y - lmN[a].y) * k });
+    const cen = { x: (lmN[0].x + lmN[5].x + lmN[17].x + lmN[9].x) / 4, y: (lmN[0].y + lmN[5].y + lmN[17].y + lmN[9].y) / 4 };
+    pts.push(cen, mid(0, 9, .5), mid(0, 5, .6), mid(0, 17, .6), mid(5, 6, .5), mid(9, 10, .5), mid(13, 14, .5), mid(17, 18, .5), mid(6, 7, .5), mid(10, 11, .5), mid(9, 13, .5), mid(5, 9, .5));
+    const cbs = [], crs = [], ys = [];
+    for (const q of pts) { const x = Math.round(q.x * 95), y = Math.round(q.y * 95); if (x < 1 || y < 1 || x > 94 || y > 94) continue;
+      for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) { const k = ((y + j) * 96 + x + i) * 4, r = d[k] / 255, g = d[k + 1] / 255, b = d[k + 2] / 255;
+        const Y = .299 * r + .587 * g + .114 * b; ys.push(Y); cbs.push((b - Y) * .564); crs.push((r - Y) * .713); } }
+    if (cbs.length < 20) { ref.conf *= .9; return; }
+    const med = a => { const s = a.slice().sort((x, y) => x - y); return s[s.length >> 1]; };
+    const cb = med(cbs), cr = med(crs), Y = med(ys);
+    const mad = Math.max(med(cbs.map(v => Math.abs(v - cb))), med(crs.map(v => Math.abs(v - cr))));
+    const k = ref.conf > 0 ? .25 : 1; ref.cb += (cb - ref.cb) * k; ref.cr += (cr - ref.cr) * k; ref.y += (Y - ref.y) * k;
+    ref.sig += (Math.min(.08, Math.max(.022, mad * 2.6)) - ref.sig) * k;
+    // confiable si la piel tiene color propio (no gris) y la muestra es pareja
+    const cromo = Math.hypot(cr, cb), parejo = mad < .05;
+    ref.conf += ((cromo > .025 && parejo ? 1 : .35) - ref.conf) * .2;
   }
-  const lect = new Uint8Array(RW * 256 * 4); let tapado = 0;
-  let A = 0, F = 0, T = 0, ult = performance.now(), ultT = null, ultVisto = 0, inicio = 0, cuadro = 0, sinTapar = 0;
+
+  let perdida = 0, F = 0, A = 0, T = 0, ult = performance.now(), visto = false, cuadro = 0;
+  const E = new Float32Array(10), L = new Float32Array(42), Lp = Array.from({ length: 21 }, () => ({ x: 0, y: 0 }));
   function frame() {
-    requestAnimationFrame(frame); if (!ok) return;
+    requestAnimationFrame(frame); if (!ok || (CFG.planctonDirecto && CFG.modo === 'plancton' && !CFG.debug)) return;
     const ahora = performance.now(), st = Math.min(.05, (ahora - ult) / 1000); ult = ahora; T += st;
+    const M = window.HZMano, src = window.hzManoFuente || (M && M.src) || document.querySelector('video');
+    const hay = !!(M && M.lm && src && ahora - M.t < CFG.espera);
+    const reciente = !!(M && M.lm && src && ahora - M.t < 1200);   // pérdidas cortas: la mano sigue donde iba
+    if (hay) { F = Math.max(F, .2); F = Math.min(1.25, F + st / CFG.avance * 1.25); A = Math.min(1, A + st * 4); perdida = 0; }
+    else { perdida += st; A = Math.max(0, A - st / CFG.suelta * (reciente ? .5 : 1.5));
+      if (perdida > CFG.olvida) { F = 0; visto = false; } }   // el plancton se queda en la piel aunque se pierda un rato
+    if (typeof window.hzPielForzar === 'number') F = window.hzPielForzar;
     const DPR = Math.min(devicePixelRatio || 1, 2), W = innerWidth, H = innerHeight;
     if (cv.width !== Math.round(W * DPR) || cv.height !== Math.round(H * DPR)) { cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR); }
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
-    const src = window.hzManoFuente || document.querySelector('video'); if (!src || !(src.videoWidth || src.naturalWidth)) return;
-    const t = tarjeta();
-    if (t) { if (!ultT || ahora - ultVisto > 1500 || t.idx !== idxAct) { inicio = 10; idxAct = t.idx; F = 0; A = 0;   // tarjeta nueva o recuperada: aprender de cero
-        const rh = Math.max(32, Math.round(RW * t.asp)); if (rh !== RH) armarBuffers(rh); }
-      ultT = t; ultVisto = ahora; asp = t.asp; }
-    if (!ultT || ahora - ultVisto > 1200) { A = 0; F = 0; return; }
+    gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+    if (A <= 0 || !src || !(src.videoWidth || src.naturalWidth)) return;
     const sr = src.getBoundingClientRect();
-    const Huv = homografia([[0, 0], [1, 0], [1, 1], [0, 1]], ultT.P), Hi = homografia(ultT.P, [[0, 0], [1, 0], [1, 1], [0, 1]]);
-    gl.disable(gl.BLEND);
-    if (t) {
-      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tV);
-      try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, src); } catch (e) { return; }
-      gl.viewport(0, 0, RW, RH);
-      // 1 enderezar
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fCur); usar(P.rect); textura(0, tV, P.rect.u.uV);
-      gl.uniformMatrix3fv(P.rect.u.uHuv, false, m3(Huv)); gl.uniform4f(P.rect.u.uVid, sr.left, sr.top, sr.width, sr.height);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-      // 2 qué tapa
-      const io2 = 1 - io;
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fOcc[io2]); usar(P.occ); textura(0, tCur, P.occ.u.uCur); textura(1, tRef[ir], P.occ.u.uRef); textura(2, tOcc[io], P.occ.u.uOccPrev);
-      gl.uniform2f(P.occ.u.uTx, 1 / RW, 1 / RH); gl.uniform1f(P.occ.u.uUmbral, inicio > 0 ? 9 : CFG.umbral);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); io = io2;
-      // 3 aprender
-      const ir2 = 1 - ir;
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fRef[ir2]); usar(P.apr); textura(0, tCur, P.apr.u.uCur); textura(1, tRef[ir], P.apr.u.uRef); textura(2, tOcc[io], P.apr.u.uOcc);
-      gl.uniform1f(P.apr.u.uRate, CFG.aprende); gl.uniform1f(P.apr.u.uInicio, inicio > 0 ? 1 : 0);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); ir = ir2; if (inicio > 0) inicio--;
-      // cuánto está tapado (lectura chica cada 4 cuadros)
-      if ((cuadro++ & 3) === 0) { gl.bindFramebuffer(gl.FRAMEBUFFER, fOcc[io]); gl.readPixels(0, 0, RW, RH, gl.RGBA, gl.UNSIGNED_BYTE, lect);
-        let n = 0; for (let i = 0; i < RW * RH; i++) if (lect[i * 4] > 128) n++; tapado = n / (RW * RH); }
+    if (!hay && M && M.lm && M.vel && ahora - M.t < 1200) {
+      const k = Math.max(0, 1 - (ahora - M.t) / 600);
+      for (let i = 0; i < 21; i++) { const v = M.vel[i]; Lp[i].x += v.x * sr.width * st * 1000 * k * .6; Lp[i].y += v.y * sr.height * st * 1000 * k * .6; } }
+    if (hay) {
+      const adel = Math.min(80, ahora - M.t + 30);   // adelanta la mano lo que tarda MediaPipe en leerla
+      for (let i = 0; i < 21; i++) { const l = M.lm[i], v = M.vel && M.vel[i];
+        const x = sr.left + (l.x + (v ? v.x * adel : 0)) * sr.width, y = sr.top + (l.y + (v ? v.y * adel : 0)) * sr.height;
+        if (!visto) { Lp[i].x = x; Lp[i].y = y; } else { Lp[i].x += (x - Lp[i].x) * .7; Lp[i].y += (y - Lp[i].y) * .7; } }
+      visto = true;
+      if ((cuadro++ & 1) === 0) muestrear(src, M.lm);
     }
-    const hay = tapado > .004 && tapado < .6;
-    if (hay) { sinTapar = 0; A = Math.min(1, A + st * 4); F = Math.min(1.3, F + st * .9); }
-    else { sinTapar += st; if (sinTapar > .4) { A = Math.max(0, A - st * 2); if (A <= 0) F = 0; } }
-    if (CFG.debug) A = 1;
-    if (A <= 0) return;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, cv.width, cv.height);
-    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    usar(P.ver); textura(0, tOcc[io], P.ver.u.uOcc);
-    gl.uniform2f(P.ver.u.uRes, cv.width, cv.height); gl.uniform1f(P.ver.u.uDpr, DPR); gl.uniformMatrix3fv(P.ver.u.uHi, false, m3(Hi));
-    gl.uniform1f(P.ver.u.uAsp, asp); gl.uniform2f(P.ver.u.uTx, 1 / RW, 1 / RH); gl.uniform1f(P.ver.u.uT, T); gl.uniform1f(P.ver.u.uA, A);
-    gl.uniform1f(P.ver.u.uF, F); gl.uniform1f(P.ver.u.uDebug, CFG.debug ? 1 : 0);
+    for (let i = 0; i < 21; i++) { L[i * 2] = Lp[i].x; L[i * 2 + 1] = Lp[i].y; }
+    const palm = Math.hypot(Lp[9].x - Lp[0].x, Lp[9].y - Lp[0].y);
+    for (let k = 0; k < 5; k++) { const t = Lp[4 + k * 4], d = Lp[3 + k * 4], len = Math.hypot(t.x - d.x, t.y - d.y) || 1;
+      E[k * 2] = t.x + (t.x - d.x) / len * palm * .5; E[k * 2 + 1] = t.y + (t.y - d.y) / len * palm * .5; }
+    gl.uniform2fv(U.uE, E);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tV);
+    try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, src); } catch (e) { return; }
+    const pc = CFG.plancton && CFG.modo === 'plancton' && document.getElementById('hz-plancton'); let plOk = 0;
+    if (pc && pc.width) { gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, tP); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+      try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, pc); plOk = 1; } catch (e) {} gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false); }
+    gl.uniform1f(U.uPlOk, plOk);
+    gl.uniform2f(U.uRes, cv.width, cv.height); gl.uniform1f(U.uDpr, DPR); gl.uniform4f(U.uVid, sr.left, sr.top, sr.width, sr.height);
+    gl.uniform2fv(U.uL, L); gl.uniform3f(U.uRef, ref.y, ref.cb, ref.cr); gl.uniform1f(U.uSig, ref.sig); gl.uniform1f(U.uConf, ref.conf);
+    gl.uniform1f(U.uF, F); gl.uniform1f(U.uT, T); gl.uniform1f(U.uA, A); gl.uniform1f(U.uDebug, CFG.debug ? 1 : 0); gl.uniform1f(U.uImgOk, CFG.modo === 'imagen' ? imgOk * 2 : imgOk);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
   function iniciar() { if (iniciar.ok) return; iniciar.ok = true; document.body.appendChild(cv); requestAnimationFrame(frame); }
   if (document.readyState === 'loading') addEventListener('DOMContentLoaded', iniciar); else iniciar();
-  return { CFG, get tapado() { return tapado; }, get avance() { return F; }, est: { get tapado() { return tapado; } }, imagen() {} };
+  return { CFG, imagen, ref, get listo() { return ok; }, get avance() { return F; } };
 })();
